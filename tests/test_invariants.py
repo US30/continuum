@@ -56,7 +56,12 @@ class TestGroundTruthLinkIsEvalOnly:
     harness may read it. A runtime import of it is a build failure.'
     """
 
-    ALLOWED_IMPORTERS = {
+    # CLAUDE.md I4: "Only the evaluation harness may read it" — i.e. anything under eval/ —
+    # plus the specific continuum/ files that legitimately touch the table's own module
+    # without reading ground_truth_link rows at runtime: the model definition itself, the
+    # models package's re-export, the writer (collisions/build), and Alembic's env.py
+    # (which imports the whole models package to populate autogenerate metadata).
+    ALLOWED_IMPORTER_FILES = {
         CONTINUUM_ROOT / "db" / "models" / "eval.py",
         CONTINUUM_ROOT / "db" / "models" / "__init__.py",
         CONTINUUM_ROOT / "foundation" / "collisions.py",
@@ -68,14 +73,20 @@ class TestGroundTruthLinkIsEvalOnly:
         hits = _importers_of(
             CONTINUUM_ROOT, ("continuum.db.models.eval", "continuum.db.models.eval_models")
         )
-        disallowed = {path: mods for path, mods in hits.items() if path not in self.ALLOWED_IMPORTERS}
+        disallowed = {
+            path: mods for path, mods in hits.items() if path not in self.ALLOWED_IMPORTER_FILES
+        }
         assert not disallowed, f"runtime import of ground_truth_link's module: {disallowed}"
 
-    def test_eval_package_is_permitted_to_import_it(self) -> None:
-        # Sanity check the test's own logic isn't vacuous: eval/ must be allowed to import
-        # it once eval/ actually does so (Phase 7). Not asserted here since eval/ has no
-        # reader yet — this test exists so Phase 7 doesn't need to touch this file.
-        assert EVAL_ROOT.exists()
+    def test_eval_package_actually_uses_the_carve_out(self) -> None:
+        # Confirms this test file's own logic isn't vacuous: eval/ really does import
+        # ground_truth_link's module (eval.resolution_metrics, Phase 2) and is correctly
+        # excluded from the disallowed-importers check above rather than just never tripping
+        # it because nothing under eval/ happens to import it yet.
+        hits = _importers_of(
+            EVAL_ROOT, ("continuum.db.models.eval", "continuum.db.models.eval_models")
+        )
+        assert hits, "expected at least one eval/ module to import ground_truth_link's module"
 
 
 class TestNoProviderSdkOutsideLlmPackage:

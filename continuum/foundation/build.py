@@ -2,19 +2,29 @@
 
 Run via `make data-build` (`python -m continuum.foundation.build`). Idempotent (CLAUDE.md
 I6): every writer upserts on a natural key — party_record on (source_system,
-source_record_id), entity on a person_id-derived id, etc. — so re-running with the same
+source_record_id), entity on a record_id-derived id, etc. — so re-running with the same
 DATA_SEED changes no row counts.
 
 Architecture note — flagged, not silently resolved (CLAUDE.md §11: "ask before assuming
-on anything touching the data model"): CLAUDE.md §6 gives `account` a NOT NULL FK straight
-to `entity`, but entity resolution (Phase 2) does not exist yet. This loader therefore
-creates one *singleton* Entity per synthetic person at load time (cluster_size=1,
-confidence=1.0, a fixed sentinel resolution_run_id) and an entity_member row for every
-party_record pointing at it, so accounts have somewhere valid to point today. Phase 2's
-job then becomes *merging* these singletons (updating account.entity_id and retiring the
-absorbed singleton) rather than creating entities from nothing. Confirm this reading before
-Phase 2 starts — the alternative is adding a record_id FK to `account` and deferring
-entity assignment entirely to Phase 2, which is a schema change CLAUDE.md doesn't describe.
+on anything touching the data model"), confirmed with the user before Phase 2 was written:
+CLAUDE.md §6 gives `account` a NOT NULL FK straight to `entity`, but entity resolution
+(Phase 2) does not exist until after this loader runs. This loader therefore gives every
+party_record its own *singleton* Entity at load time (cluster_size=1, confidence=1.0, a
+fixed sentinel resolution_run_id) and one entity_member row per record.
+
+Deliberately one singleton per *record*, not one per synthetic person: this loader has no
+`person_id` column to read at all in a real system — that field only exists in-memory here
+because we generated the ground truth ourselves. Keying entity assignment off it instead of
+off the record would silently pre-merge exactly the collisions continuum.resolution (Phase
+2) is supposed to discover from observable attributes, making Phase 2 vacuous against this
+dataset. So: each account is created under its *canonical* (loan_origination) record's
+singleton entity — the identity the loan was actually originated under — and every
+duplicate/hard-negative record from continuum.foundation.collisions sits in its own
+unconnected singleton until Phase 2 merges it in. continuum.resolution.merge repoints every
+FK'd row (account, contact_event, risk_file_event, case) from an absorbed singleton to the
+surviving entity_id and deletes the absorbed Entity row; the surviving id is the
+deterministic cluster id from continuum.resolution.cluster, so which record happened to be
+"canonical" doesn't matter for correctness.
 """
 
 from __future__ import annotations
@@ -33,7 +43,7 @@ from sqlalchemy.orm import Session
 from continuum.config.settings import get_settings
 from continuum.db.models.account import Account, DelinquencyState, PaymentEvent
 from continuum.db.models.collections import ContactEvent, ContactSource
-from continuum.db.models.entity import Entity
+from continuum.db.models.entity import Entity, EntityMember
 from continuum.db.models.eval import GroundTruthLink
 from continuum.db.models.party import PartyRecord
 from continuum.db.models.screening import SanctionsAlias, SanctionsEntity
@@ -52,9 +62,12 @@ SANCTIONS_CSV = Path("data") / "targets.simple.csv"
 SINGLETON_RESOLUTION_RUN_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
 
-def _singleton_entity_id(person_id: uuid.UUID) -> uuid.UUID:
-    """Deterministic entity id for a person's Phase-1 singleton entity (CLAUDE.md I6)."""
-    return uuid.uuid5(person_id, "phase1-singleton")
+def _singleton_entity_id(record_id: uuid.UUID) -> uuid.UUID:
+    """Deterministic entity id for one party_record's Phase-1 singleton entity (CLAUDE.md
+    I6). Keyed on record_id, not on the in-memory-only person_id — see the module
+    docstring for why that distinction is load-bearing for Phase 2.
+    """
+    return uuid.uuid5(record_id, "phase1-singleton")
 
 
 def _load_party_records_and_links(
@@ -98,28 +111,49 @@ def _load_party_records_and_links(
         session.execute(stmt)
 
 
-def _load_singleton_entities_and_accounts(
-    session: Session, persons: list[generate.SyntheticPerson], drafts: list[collisions.PartyRecordDraft]
-) -> None:
-    records_by_person: dict[uuid.UUID, list[collisions.PartyRecordDraft]] = {}
-    for draft in drafts:
-        records_by_person.setdefault(draft.person_id, []).append(draft)
+def _load_singletons(session: Session, drafts: list[collisions.PartyRecordDraft]) -> dict[uuid.UUID, uuid.UUID]:
+    """One singleton Entity + one EntityMember row per party_record. Returns
+    {person_id: canonical_entity_id} — the loan_origination record's entity id for each
+    person — for the account/contact loaders below, which is the only person-level fact
+    this module is allowed to know at write time (see the module docstring).
+    """
+    canonical_entity_by_person: dict[uuid.UUID, uuid.UUID] = {}
 
-    for person in persons:
-        entity_id = _singleton_entity_id(person.person_id)
-        person_records = records_by_person.get(person.person_id, [])
+    for draft in drafts:
+        entity_id = _singleton_entity_id(draft.record_id)
 
         entity_stmt = pg_insert(Entity).values(
             entity_id=entity_id,
-            cluster_size=len(person_records),
+            cluster_size=1,
             confidence=Decimal("1.0"),
             resolution_run_id=SINGLETON_RESOLUTION_RUN_ID,
         )
-        entity_stmt = entity_stmt.on_conflict_do_update(
-            index_elements=["entity_id"],
-            set_={"cluster_size": entity_stmt.excluded.cluster_size},
-        )
+        entity_stmt = entity_stmt.on_conflict_do_nothing(index_elements=["entity_id"])
         session.execute(entity_stmt)
+
+        member_stmt = pg_insert(EntityMember).values(
+            entity_id=entity_id,
+            record_id=draft.record_id,
+            match_probability=Decimal("1.0"),
+        )
+        member_stmt = member_stmt.on_conflict_do_nothing(
+            index_elements=["entity_id", "record_id"]
+        )
+        session.execute(member_stmt)
+
+        if draft.source_system == "loan_origination":
+            canonical_entity_by_person[draft.person_id] = entity_id
+
+    return canonical_entity_by_person
+
+
+def _load_accounts(
+    session: Session,
+    persons: list[generate.SyntheticPerson],
+    canonical_entity_by_person: dict[uuid.UUID, uuid.UUID],
+) -> None:
+    for person in persons:
+        entity_id = canonical_entity_by_person[person.person_id]
 
         for account in person.accounts:
             states = delinquency.derive_delinquency_states(
@@ -178,14 +212,17 @@ def _load_singleton_entities_and_accounts(
 
 
 def _load_contact_history(
-    session: Session, persons: list[generate.SyntheticPerson], seed: int
+    session: Session,
+    persons: list[generate.SyntheticPerson],
+    canonical_entity_by_person: dict[uuid.UUID, uuid.UUID],
+    seed: int,
 ) -> Counter[str]:
     settings = get_settings()
     rng = random.Random(seed)
     channel_counts: Counter[str] = Counter()
 
     for person in persons:
-        entity_id = _singleton_entity_id(person.person_id)
+        entity_id = canonical_entity_by_person[person.person_id]
         for account in person.accounts:
             states = delinquency.derive_delinquency_states(
                 account.payments, account.origination_date, generate.AS_OF_DATE
@@ -272,8 +309,11 @@ def build(
 
     with session_scope() as session:
         _load_party_records_and_links(session, drafts, links)
-        _load_singleton_entities_and_accounts(session, persons, drafts)
-        channel_counts = _load_contact_history(session, persons, effective_seed)
+        canonical_entity_by_person = _load_singletons(session, drafts)
+        _load_accounts(session, persons, canonical_entity_by_person)
+        channel_counts = _load_contact_history(
+            session, persons, canonical_entity_by_person, effective_seed
+        )
         sanctions_result = _load_sanctions_snapshot(session, SANCTIONS_CSV)
 
     _print_summary(persons, drafts, links, channel_counts, sanctions_result)

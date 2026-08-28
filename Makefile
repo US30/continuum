@@ -1,5 +1,6 @@
 .PHONY: install lint format typecheck test test-all check \
-        db-up db-down db-reset migrate revision data-build scan
+        db-up db-down db-reset migrate revision data-build scan \
+        resolve resolve-metrics
 
 COMPOSE = docker compose -f docker/docker-compose.yml
 
@@ -50,6 +51,14 @@ revision:
 # and the planted ground_truth_link summary.
 data-build:
 	uv run python -m continuum.foundation.build
+
+# Phase 2 done-when (part 1): blocking -> Splink -> stable clustering -> merge -> network.
+resolve:
+	uv run python -m continuum.resolution.run
+
+# Phase 2 done-when (part 2): precision/recall/F1 against ground_truth_link, one command.
+resolve-metrics:
+	uv run python -m eval.resolution_metrics
 
 scan:
 	uv run gitleaks detect --no-git --redact --source .
