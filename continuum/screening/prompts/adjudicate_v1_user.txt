@@ -1,0 +1,14 @@
+CUSTOMER
+  name: {customer_name}
+  date of birth: {customer_dob}
+
+SANCTIONS/PEP LISTING
+  primary name: {listing_name}
+  matched alias: {matched_alias}
+  date of birth: {listing_dob}
+  countries: {listing_countries}
+  topics: {listing_topics}
+
+MATCH EVIDENCE
+  name similarity score (0-1): {similarity:.3f}
+  date of birth match: {dob_match}

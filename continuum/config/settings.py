@@ -64,6 +64,13 @@ class Settings(BaseSettings):
     screening_auto_reject_floor: float = 0.15
     screening_auto_confirm_ceiling: float = 0.92
 
+    # Candidate-generation floor (Phase 3) — deliberately looser than
+    # screening_auto_reject_floor (I5: candidate generation must be over-inclusive
+    # relative to band logic, never the other way round, or anything scoring between
+    # this floor and the auto-reject floor would never even become a candidate).
+    # Placeholder pending a real run's query-cost profile against the trigram index.
+    screening_candidate_min_similarity: float = 0.10
+
     # Delinquency state machine (Phase 1). Standard US consumer-lending DPD buckets.
     delinquency_buckets_days: tuple[int, ...] = (30, 60, 90)
 

@@ -1,0 +1,19 @@
+case_id,case_type,query_name,query_dob,listing_name,listing_dob,is_true_match
+hp-001,transliteration,Youssef Ben Amara,1965-07-19,Yusuf Ben Amara,1965-07-19,true
+hp-002,transliteration,Al-Amin Farouk,1972-02-14,Al-Amin Farouk,1988-09-01,false
+hp-003,transliteration,Zhang Wei,1980-01-05,Chang Wei,1980-01-05,true
+hp-004,transliteration,Elena Petrova,1975-06-11,Yelena Petrova,1990-12-30,false
+hp-005,transliteration,Mohammed Al-Rashid,1969-03-22,Muhammad al Rashid,1969-03-22,true
+hp-006,transliteration,Anastasia Volkov,1983-04-17,Anastasiya Volkova,1983-04-17,true
+hp-007,common_name,James Smith,1977-08-09,James Smith,1954-11-02,false
+hp-008,common_name,John Kim,1990-05-14,John Kim,1962-01-27,false
+hp-009,common_name,Maria Garcia,1985-03-03,Maria Garcia,1970-07-19,false
+hp-010,common_name,David Cohen,1993-10-08,David Cohen,1958-02-25,false
+hp-011,dob_near_miss,Aldric Vantessen,1958-03-11,Aldric Vantessen,1958-03-12,true
+hp-012,dob_near_miss,Marisol Quintrada,1985-11-02,Marisol Quintrada,1971-11-02,false
+hp-013,dob_near_miss,Tobias Reinholt,1963-08-30,Tobias Reinholt,1963-08-03,true
+hp-014,dob_near_miss,Winnifred Achterberg,1990-01-01,Winnifred Achterberg,1958-01-01,false
+hp-015,nickname,Bobby Calderon,1971-09-12,Robert Calderon,1971-09-12,true
+hp-016,name_order,Delacroix Marguerite,1966-05-23,Marguerite Delacroix,1966-05-23,true
+hp-017,exact,Katarina Voss,1979-12-19,Katarina Voss,1979-12-19,true
+hp-018,unrelated,Priya Natarajan,1988-06-06,Priya Natarajan,2001-02-14,false
