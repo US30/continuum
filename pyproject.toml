@@ -1,0 +1,118 @@
+[project]
+name = "continuum"
+version = "0.1.0"
+description = "Agentic entity-resolved risk platform spanning KYC screening to collections."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "Proprietary" }
+dependencies = [
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "sqlalchemy>=2.0",
+    "alembic>=1.14",
+    "psycopg[binary]>=3.2",
+    "structlog>=24.4",
+    "typer>=0.13",
+    "numpy>=2.1",
+    "polars>=1.14",
+]
+
+[project.optional-dependencies]
+resolution = [
+    "splink>=4.0",
+    "duckdb>=1.1",
+]
+ml = [
+    "lightgbm>=4.5",
+    "scikit-learn>=1.5",
+    "optuna>=4.1",
+]
+graph = [
+    "langgraph>=0.2",
+    "redis>=5.2",
+]
+llm = [
+    "litellm>=1.52",
+]
+api = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+]
+workers = [
+    "arq>=0.26",
+]
+flows = [
+    "prefect>=3.1",
+]
+telemetry = [
+    "opentelemetry-sdk>=1.28",
+    "opentelemetry-exporter-otlp>=1.28",
+    "langfuse>=2.53",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.7",
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "pre-commit>=4.0",
+    "faker>=33.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["continuum"]
+
+# ---------------------------------------------------------------------------
+# ruff
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["continuum", "eval", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "ANN", "RUF"]
+ignore = [
+    "ANN401", # Any is sometimes the honest type for LLM-adjacent glue code
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["ANN"]
+"continuum/db/migrations/versions/*.py" = ["ANN", "N999"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["continuum", "eval"]
+
+# ---------------------------------------------------------------------------
+# mypy — strict on the packages named in CLAUDE.md §10, normal elsewhere
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["continuum.graph.*", "continuum.guard.*", "continuum.llm.*"]
+strict = true
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers"
+markers = [
+    "unit: fast, no external services",
+    "integration: requires Postgres/Redis from docker-compose",
+]
+
+[tool.coverage.run]
+source = ["continuum"]
+omit = ["continuum/db/migrations/*"]

@@ -1,0 +1,54 @@
+# data
+data/*
+!data/.gitkeep
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# uv / venv
+.venv/
+venv/
+
+# tool caches
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.cache/
+
+# coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# duckdb / splink artifacts
+*.duckdb
+*.duckdb.wal
+splink_model_*.json
+
+# db volumes (docker-managed, not code)
+docker/pgdata/
+docker/redisdata/
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# terraform
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/*.tfvars
+!infra/*.tfvars.example

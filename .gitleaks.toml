@@ -1,0 +1,17 @@
+# gitleaks config — CLAUDE.md §12: a pre-commit scanner enforces no secret in the repo.
+# Extends the default ruleset; only local additions live here.
+
+title = "continuum gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known-safe placeholders"
+paths = [
+    '''\.env\.example$''',
+    '''tests/fixtures/.*''',
+]
+regexes = [
+    '''continuum_local_dev''', # placeholder local-only password in .env.example
+]
