@@ -145,3 +145,23 @@ class TestSelectEntitiesForScreening:
         with session_scope() as session:
             selected = select_entities_for_screening(session, since)
         assert entity_id not in selected
+
+
+class TestFullSelection:
+    def test_full_selects_an_already_screened_entity(self) -> None:
+        with session_scope() as session:
+            entity_id = _entity(session)
+            session.add(
+                ScreeningDecision(
+                    decision_id=uuid.uuid4(),
+                    entity_id=entity_id,
+                    snapshot_id=uuid.uuid4(),
+                    method=ScreeningMethod.AUTO_REJECT,
+                    outcome="clear",
+                )
+            )
+
+        since = datetime.now(UTC) - timedelta(hours=1)
+        with session_scope() as session:
+            assert entity_id not in select_entities_for_screening(session, since)
+            assert entity_id in select_entities_for_screening(session, since, full=True)

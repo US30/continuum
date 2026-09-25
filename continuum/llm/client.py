@@ -77,6 +77,16 @@ def _circuit_breaker_for(node: LogicalNode) -> CircuitBreaker:
     return _circuit_breakers.setdefault(node, CircuitBreaker())
 
 
+def _api_key_for(model_id: str, gateway_key: str, deepseek_key: str) -> str | None:
+    """Key for this call: an explicit gateway key wins; otherwise the provider key implied by
+    the model id's prefix. None lets litellm fall back to its own env var lookup."""
+    if gateway_key:
+        return gateway_key
+    if model_id.startswith("deepseek/") and deepseek_key:
+        return deepseek_key
+    return None
+
+
 def complete_structured[T: BaseModel](
     node: LogicalNode,
     system_prompt: str,
@@ -104,8 +114,8 @@ def complete_structured[T: BaseModel](
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=temperature,
-                api_base=settings.litellm_base_url,
-                api_key=settings.litellm_api_key or None,
+                api_base=settings.litellm_base_url or None,
+                api_key=_api_key_for(model_id, settings.litellm_api_key, settings.deepseek_api_key),
                 response_format={"type": "json_object"},
             )
             content = response.choices[0].message.content

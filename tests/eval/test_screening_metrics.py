@@ -33,7 +33,36 @@ class TestLoadGoldenSet:
         assert len(ids) == len(set(ids))
 
 
+class TestGoldenSetDobs:
+    def test_dobs_are_parsed(self) -> None:
+        pair = next(p for p in load_golden_set() if p.case_id == "hp-011")
+        assert pair.query_dob is not None and pair.listing_dob is not None
+
+
 class TestScreeningMetricsArithmetic:
+    def test_proportion_reaching_model_counts_only_adjudicated(self) -> None:
+        m = ScreeningMetrics(
+            true_positive=3, false_negative=0, flagged=6, total=12, auto_confirmed=2, adjudicated=4
+        )
+        assert m.proportion_reaching_model == pytest.approx(4 / 12)
+
+    def test_final_stage_none_until_adjudicator_run(self) -> None:
+        m = ScreeningMetrics(true_positive=1, false_negative=0, flagged=1, total=1)
+        assert m.final_recall is None and m.final_precision is None
+
+    def test_final_precision_and_recall(self) -> None:
+        m = ScreeningMetrics(
+            true_positive=4,
+            false_negative=0,
+            flagged=6,
+            total=8,
+            final_true_positive=3,
+            final_false_negative=1,
+            final_positive=4,
+        )
+        assert m.final_recall == 0.75
+        assert m.final_precision == 0.75
+
     def test_perfect_recall_and_precision(self) -> None:
         metrics = ScreeningMetrics(true_positive=5, false_negative=0, flagged=5, total=10)
         assert metrics.recall == 1.0
@@ -52,7 +81,3 @@ class TestScreeningMetricsArithmetic:
         metrics = ScreeningMetrics(true_positive=0, false_negative=0, flagged=0, total=0)
         assert metrics.recall is None
         assert metrics.precision is None
-
-    def test_proportion_reaching_model(self) -> None:
-        metrics = ScreeningMetrics(true_positive=3, false_negative=0, flagged=6, total=12)
-        assert metrics.proportion_reaching_model == 0.5

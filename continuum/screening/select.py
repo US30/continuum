@@ -26,7 +26,15 @@ from continuum.db.models.entity import Entity
 from continuum.db.models.screening import ScreeningDecision
 
 
-def select_entities_for_screening(session: Session, since: datetime) -> list[uuid.UUID]:
+def select_entities_for_screening(
+    session: Session, since: datetime, *, full: bool = False
+) -> list[uuid.UUID]:
+    """`full=True` selects every entity — used to sweep up candidates that an earlier run
+    deferred (adjudicator was off). Decisions are keyed deterministically, so re-deciding
+    an already-decided candidate is a no-op (I6)."""
+    if full:
+        return sorted(session.scalars(select(Entity.entity_id)).all())
+
     changed_entities = session.scalars(
         select(Account.entity_id)
         .join(DelinquencyState, DelinquencyState.account_id == Account.account_id)

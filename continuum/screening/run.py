@@ -36,6 +36,8 @@ app = typer.Typer(add_completion=False)
 logger = get_logger(__name__)
 
 DECISION_ID_NAMESPACE = uuid.UUID("00000000-0000-0000-0000-0000000000d3")
+# Placeholder listing id in the decision key for "screened, nothing to compare against".
+NO_CANDIDATE_LISTING = "none"
 EVENT_ID_NAMESPACE = uuid.UUID("00000000-0000-0000-0000-0000000000e3")
 
 
@@ -144,14 +146,14 @@ def _decide_one(
     return f"adjudicated_{verdict.verdict}"
 
 
-def run(hours_back: int = 24) -> None:
+def run(hours_back: int = 24, adjudicate_enabled: bool = True, full: bool = False) -> None:
     settings = get_settings()
     since = datetime.now(UTC) - timedelta(hours=hours_back)
 
     outcome_counts: Counter[str] = Counter()
 
     with session_scope() as session:
-        entity_ids = select_entities_for_screening(session, since)
+        entity_ids = select_entities_for_screening(session, since, full=full)
         logger.info("screening.selected", n_entities=len(entity_ids))
 
         snapshot_id = candidates_mod.current_snapshot_id(session)
@@ -164,10 +166,36 @@ def run(hours_back: int = 24) -> None:
         all_candidates = candidates_mod.generate_candidates(session, entity_ids)
         reached_model = 0
 
+        # An entity with no candidate at or above the candidate floor is a real screening
+        # outcome (clear) and must be recorded, or it would be re-selected every night as
+        # "never screened". CLAUDE.md §8: append every outcome to the risk file.
+        with_candidates = {c.entity_id for c in all_candidates}
+        for entity_id in entity_ids:
+            if entity_id not in with_candidates:
+                _write_decision_and_event(
+                    session,
+                    entity_id=entity_id,
+                    snapshot_id=snapshot_id,
+                    listing_id=NO_CANDIDATE_LISTING,
+                    method=ScreeningMethod.AUTO_REJECT,
+                    outcome="clear",
+                    evidence={"reason": "no candidate above the candidate floor"},
+                    confidence=None,
+                    model_version_str=None,
+                )
+                outcome_counts["clear_no_candidates"] += 1
+
         for candidate in all_candidates:
-            band = band_for_score(candidate.name_similarity, settings)
+            band = band_for_score(
+                candidate.name_similarity, settings, dob_corroborated=candidate.dob_match
+            )
             if band == ScreeningBand.ADJUDICATE:
                 reached_model += 1
+            if band == ScreeningBand.ADJUDICATE and not adjudicate_enabled:
+                # No LLM available: leave the candidate undecided rather than guess. Nothing
+                # is written, so a later run with the adjudicator on picks it up (I6).
+                outcome_counts["deferred_no_adjudicator"] += 1
+                continue
             outcome = _decide_one(session, candidate, snapshot_id, band)
             outcome_counts[outcome] += 1
 
@@ -191,10 +219,14 @@ def _print_summary(
 @app.command()
 def main(
     hours_back: int = typer.Option(24, help="Look-back window for delinquency-state changes."),
+    full: bool = typer.Option(False, help="Screen every entity, not just new/changed ones."),
+    adjudicate: bool = typer.Option(
+        True, "--adjudicate/--no-adjudicate", help="Call the LLM adjudicator for the middle band."
+    ),
 ) -> None:
     configure_logging(get_settings().log_level)
     logger.info("screening.start")
-    run(hours_back)
+    run(hours_back, adjudicate, full)
 
 
 if __name__ == "__main__":

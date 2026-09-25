@@ -20,13 +20,20 @@ class ScreeningBand(StrEnum):
     AUTO_CONFIRM = "auto_confirm"
 
 
-def band_for_score(score: float, settings: Settings) -> ScreeningBand:
-    """Ceiling wins ties over floor when the two thresholds are ever misconfigured to
-    overlap (ceiling <= floor) — auto-confirm is checked first, so a candidate is never
-    silently auto-rejected when it should have been confirmed.
+def band_for_score(score: float, settings: Settings, *, dob_corroborated: bool) -> ScreeningBand:
+    """Auto-confirm needs both a high name score *and* corroborating date of birth: a
+    common name with a different or unknown DOB is exactly what the adjudicator is for,
+    and confirming it automatically would hold a real customer (I2 blocks unresolved
+    screening). Only the confirm side is gated — this can send more candidates to the
+    adjudicator but never fewer to it, so recall is untouched (I5).
+
+    Ceiling is checked before the floor, so a misconfigured floor >= ceiling can never
+    silently auto-reject a high scorer.
     """
-    if score >= settings.screening_auto_confirm_ceiling:
+    if score >= settings.screening_auto_confirm_ceiling and dob_corroborated:
         return ScreeningBand.AUTO_CONFIRM
+    if score >= settings.screening_auto_confirm_ceiling:
+        return ScreeningBand.ADJUDICATE
     if score <= settings.screening_auto_reject_floor:
         return ScreeningBand.AUTO_REJECT
     return ScreeningBand.ADJUDICATE

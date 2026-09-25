@@ -11,4 +11,4 @@ SANCTIONS/PEP LISTING
 
 MATCH EVIDENCE
   name similarity score (0-1): {similarity:.3f}
-  date of birth match: {dob_match}
+  date of birth evidence (match / mismatch / unknown): {dob_evidence}

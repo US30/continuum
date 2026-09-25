@@ -20,7 +20,7 @@ from continuum.screening.candidates import ScreeningCandidate
 from continuum.screening.schemas import AdjudicationVerdict
 
 PROMPT_DIR = Path(__file__).parent / "prompts"
-PROMPT_VERSION = "adjudicate_v1"
+PROMPT_VERSION = "adjudicate_v2"
 
 _SYSTEM_PROMPT = (PROMPT_DIR / f"{PROMPT_VERSION}_system.txt").read_text(encoding="utf-8")
 _USER_PROMPT_TEMPLATE = (PROMPT_DIR / f"{PROMPT_VERSION}_user.txt").read_text(encoding="utf-8")
@@ -36,7 +36,7 @@ def adjudicate(candidate: ScreeningCandidate) -> AdjudicationVerdict:
         listing_countries=candidate.listing_countries or "unknown",
         listing_topics=candidate.listing_topics or "unknown",
         similarity=candidate.name_similarity,
-        dob_match=candidate.dob_match,
+        dob_evidence=candidate.dob_evidence.value,
     )
     return complete_structured(
         node="screening_adjudicator",
