@@ -101,7 +101,21 @@ warn_unused_ignores = true
 
 # Third-party libs without inline types; installed per phase (resolution/llm extras).
 [[tool.mypy.overrides]]
-module = ["splink", "splink.*", "litellm", "litellm.*", "pandas", "pandas.*"]
+module = [
+    "splink",
+    "splink.*",
+    "litellm",
+    "litellm.*",
+    "pandas",
+    "pandas.*",
+    "joblib",
+    "sklearn",
+    "sklearn.*",
+    "scipy",
+    "scipy.*",
+    "lightgbm",
+    "lightgbm.*",
+]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

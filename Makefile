@@ -1,6 +1,6 @@
 .PHONY: install lint format typecheck test test-all check \
         db-up db-down db-reset migrate revision data-build scan \
-        resolve resolve-metrics screen screen-metrics screen-metrics-llm
+        resolve resolve-metrics screen screen-metrics screen-metrics-llm train uplift-metrics
 
 COMPOSE = docker compose -f docker/docker-compose.yml
 RUN = conda run --no-capture-output -n continuum
@@ -77,3 +77,11 @@ scan:
 # (needs DEEPSEEK_API_KEY in .env).
 screen-metrics-llm:
 	$(RUN) python -m eval.screening_metrics --with-adjudicator
+
+# Phase 4: build episodes, time-split, train self-cure/response T-learner, calibrate, report.
+train:
+	$(RUN) python -m continuum.scoring.train
+
+# Phase 4 done-when: Metric 2 — incremental recovery of uplift ranking vs the rules baseline.
+uplift-metrics:
+	$(RUN) python -m eval.uplift_metrics
