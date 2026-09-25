@@ -58,14 +58,24 @@ PROFILE_WEIGHTS: dict[DelinquencyProfile, float] = {
     DelinquencyProfile.CHARGED_OFF: 0.05,
 }
 
-# Target days-past-due at AS_OF_DATE for each profile that isn't CLEAN/CHARGED_OFF —
-# chosen to land comfortably inside the matching delinquency_state bucket.
-_TARGET_DPD: dict[DelinquencyProfile, int] = {
-    DelinquencyProfile.DELINQUENT_30: 35,
-    DelinquencyProfile.DELINQUENT_60: 65,
-    DelinquencyProfile.DELINQUENT_90: 95,
-    DelinquencyProfile.CURED: 20,
+# Age band, in days before AS_OF_DATE, of the one installment that goes wrong for each
+# non-CLEAN profile. Bands sit strictly inside the matching delinquency bucket with a 3-day
+# margin (a due day > 28 is clamped to 28, moving the date up to 3 days earlier), so the
+# state machine in continuum.foundation.delinquency always derives the intended bucket:
+#   DELINQUENT_30 -> [30,60)   DELINQUENT_60 -> [60,90)   DELINQUENT_90 -> [90,120)
+#   CURED         -> crosses 30 DPD, then is paid late (< 60 DPD at payment)
+#   CHARGED_OFF   -> past the 120-day charge-off threshold
+_TROUBLE_AGE_BAND: dict[DelinquencyProfile, tuple[int, int]] = {
+    DelinquencyProfile.DELINQUENT_30: (32, 56),
+    DelinquencyProfile.DELINQUENT_60: (62, 86),
+    DelinquencyProfile.DELINQUENT_90: (92, 116),
+    DelinquencyProfile.CURED: (40, 55),
+    DelinquencyProfile.CHARGED_OFF: (125, 250),
 }
+
+# How many on-time installments precede the trouble installment.
+_MIN_CLEAN_MONTHS_BEFORE_TROUBLE = 1
+_MAX_CLEAN_MONTHS_BEFORE_TROUBLE = 10
 
 
 @dataclass(frozen=True)
@@ -97,12 +107,26 @@ def _monthly_due_dates(origination: date, as_of: date) -> list[date]:
     return dates
 
 
+def _shift_months_back(d: date, months: int) -> date:
+    """`d` minus `months` calendar months. `d.day` must be <= 28 (see _trouble_due_date)."""
+    total = d.year * 12 + (d.month - 1) - months
+    return date(total // 12, total % 12 + 1, d.day)
+
+
+def _trouble_due_date(profile: DelinquencyProfile, as_of: date, rng: random.Random) -> date:
+    """Due date of the installment that goes unpaid (or late) for a non-CLEAN profile."""
+    low, high = _TROUBLE_AGE_BAND[profile]
+    due = as_of - timedelta(days=rng.randint(low, high))
+    return due.replace(day=min(due.day, 28))
+
+
 def _generate_payments(
     origination: date,
     as_of: date,
     profile: DelinquencyProfile,
     exposure: Decimal,
     rng: random.Random,
+    trouble_due: date | None = None,
 ) -> list[PaymentRecord]:
     due_dates = _monthly_due_dates(origination, as_of)
     installment = (exposure / max(len(due_dates), 1)).quantize(Decimal("0.01"))
@@ -111,10 +135,10 @@ def _generate_payments(
         return [PaymentRecord(d, d, installment, installment) for d in due_dates]
 
     if profile == DelinquencyProfile.CHARGED_OFF:
-        # Pays on time until six installments before as_of, then never pays again —
-        # comfortably past the 120-day charge-off threshold by AS_OF_DATE.
-        delinquency_start_idx = max(0, len(due_dates) - 6)
-        delinquency_start = due_dates[delinquency_start_idx]
+        # Pays on time until `trouble_due`, then never pays again — past the 120-day
+        # charge-off threshold by AS_OF_DATE (see _TROUBLE_AGE_BAND).
+        assert trouble_due is not None
+        delinquency_start = trouble_due
         return [
             PaymentRecord(d, d, installment, installment)
             if d < delinquency_start
@@ -125,10 +149,7 @@ def _generate_payments(
     # DELINQUENT_30/60/90/CURED: one installment goes unpaid at the point that lands
     # as_of at the target DPD; CURED additionally pays that installment late, just before
     # as_of, so the state machine has cured by the time the snapshot is taken.
-    target_dpd = _TARGET_DPD[profile]
-    ideal_trouble_date = as_of - timedelta(days=target_dpd)
-    eligible = [d for d in due_dates if d <= ideal_trouble_date]
-    trouble_due = max(eligible) if eligible else due_dates[0]
+    assert trouble_due is not None
 
     is_cured = profile == DelinquencyProfile.CURED
     cure_paid_date = as_of - timedelta(days=rng.randint(0, 5)) if is_cured else None
@@ -167,10 +188,23 @@ def generate_population(n_persons: int, seed: int) -> list[SyntheticPerson]:
         accounts: list[SyntheticAccount] = []
         for _ in range(n_accounts):
             span_days = (ORIGINATION_WINDOW_END - ORIGINATION_WINDOW_START).days
-            origination = ORIGINATION_WINDOW_START + timedelta(days=rng.randint(0, span_days))
             exposure = Decimal(str(round(rng.lognormvariate(8.5, 0.6), 2)))
             profile = rng.choices(profiles, weights=weights)[0]
-            payments = _generate_payments(origination, AS_OF_DATE, profile, exposure, rng)
+            trouble_due: date | None = None
+            if profile == DelinquencyProfile.CLEAN:
+                origination = ORIGINATION_WINDOW_START + timedelta(days=rng.randint(0, span_days))
+            else:
+                # Anchor origination on the trouble installment so its age at AS_OF_DATE
+                # lands in the profile's band, instead of picking origination first and
+                # snapping to whichever due date happens to be nearby.
+                trouble_due = _trouble_due_date(profile, AS_OF_DATE, rng)
+                origination = _shift_months_back(
+                    trouble_due,
+                    rng.randint(_MIN_CLEAN_MONTHS_BEFORE_TROUBLE, _MAX_CLEAN_MONTHS_BEFORE_TROUBLE),
+                )
+            payments = _generate_payments(
+                origination, AS_OF_DATE, profile, exposure, rng, trouble_due
+            )
             accounts.append(
                 SyntheticAccount(
                     account_id=uuid.UUID(int=rng.getrandbits(128)),
