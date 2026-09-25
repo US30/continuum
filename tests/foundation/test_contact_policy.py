@@ -1,8 +1,9 @@
 """Tests for the historical contact-policy simulation.
 
 CLAUDE.md §8 calls this module "the highest-risk item in the whole build... scheduled
-first deliberately" — hence the heavier coverage here than other Phase 1 modules: cap
-adherence, quiet-hour adherence, determinism, and a non-degenerate treatment rate.
+first deliberately" — hence the heavier coverage here than other Phase 1 modules: quiet-hour
+adherence, determinism, and exposure-weighted probability. Whether the policy's contact
+actually *changes the outcome* is tested in test_generate.py.
 """
 
 from __future__ import annotations
@@ -10,27 +11,15 @@ from __future__ import annotations
 import random
 import uuid
 from datetime import date, datetime
-from itertools import pairwise
 
 from continuum.config.settings import Settings
-from continuum.db.models.account import DelinquencyBucket
 from continuum.foundation.contact_policy import (
     contact_probability,
     is_quiet_hours,
-    simulate_contacts,
+    simulate_decision_contact,
 )
-from continuum.foundation.delinquency import StateInterval
 
 SETTINGS = Settings()
-
-
-def _interval(state: DelinquencyBucket, day: int) -> StateInterval:
-    return StateInterval(
-        effective_from=date(2025, 1, day),
-        effective_to=None,
-        state=state,
-        days_past_due=30,
-    )
 
 
 class TestContactProbability:
@@ -62,57 +51,39 @@ class TestQuietHours:
         assert is_quiet_hours(datetime(2025, 1, 1, 8, 0), SETTINGS) is False
 
 
-class TestSimulateContacts:
-    def test_no_contact_outside_trigger_buckets(self) -> None:
-        states = [_interval(DelinquencyBucket.CURRENT, 1), _interval(DelinquencyBucket.CURED, 20)]
-        contacts = simulate_contacts(
-            uuid.uuid4(), uuid.uuid4(), 10_000, states, SETTINGS, random.Random(1)
+class TestSimulateDecisionContact:
+    def _contact(self, seed: int = 1, cured: bool = False):
+        return simulate_decision_contact(
+            uuid.uuid4(), uuid.uuid4(), date(2025, 6, 10), cured, SETTINGS, random.Random(seed)
         )
-        assert contacts == []
 
-    def test_sent_contacts_respect_quiet_hours(self) -> None:
-        states = [_interval(DelinquencyBucket.DPD_30, d) for d in range(1, 29, 3)]
-        contacts = simulate_contacts(
-            uuid.uuid4(), uuid.uuid4(), 15_000, states, SETTINGS, random.Random(7)
-        )
-        for contact in contacts:
-            assert not is_quiet_hours(contact.sent_at, SETTINGS)
+    def test_sent_on_the_decision_date(self) -> None:
+        assert self._contact().sent_at.date() == date(2025, 6, 10)
 
-    def test_frequency_cap_enforced(self) -> None:
-        # Every day in a trigger bucket, high exposure so probability is near-certain.
-        states = [_interval(DelinquencyBucket.DPD_30, d) for d in range(1, 29)]
-        contacts = simulate_contacts(
-            uuid.uuid4(), uuid.uuid4(), 1_000_000, states, SETTINGS, random.Random(3)
-        )
-        min_gap = max(1, 7 // max(SETTINGS.contact_policy_max_contacts_per_week, 1))
-        for earlier, later in pairwise(contacts):
-            assert (later.sent_at.date() - earlier.sent_at.date()).days >= min_gap
+    def test_respects_quiet_hours_across_many_draws(self) -> None:
+        for seed in range(200):
+            assert not is_quiet_hours(self._contact(seed).sent_at, SETTINGS)
 
     def test_deterministic_given_same_seed(self) -> None:
-        states = [_interval(DelinquencyBucket.DPD_30, d) for d in range(1, 20, 4)]
         entity_id, account_id = uuid.uuid4(), uuid.uuid4()
-        first = simulate_contacts(
-            entity_id, account_id, 12_000, states, SETTINGS, random.Random(42)
-        )
-        second = simulate_contacts(
-            entity_id, account_id, 12_000, states, SETTINGS, random.Random(42)
-        )
-        assert first == second
 
-    def test_treatment_rate_is_non_degenerate_across_exposure_bands(self) -> None:
-        # Across many independent accounts spanning low to high exposure, some fraction
-        # must be contacted and some must not — neither always nor never (a degenerate
-        # policy would make the Phase 4 uplift model untrainable).
-        rng = random.Random(99)
-        contacted = 0
-        total = 200
-        for i in range(total):
-            exposure = 500 + i * 500
-            states = [_interval(DelinquencyBucket.DPD_30, 15)]
-            contacts = simulate_contacts(
-                uuid.uuid4(), uuid.uuid4(), exposure, states, SETTINGS, rng
+        def make() -> object:
+            return simulate_decision_contact(
+                entity_id, account_id, date(2025, 6, 10), True, SETTINGS, random.Random(42)
             )
-            if contacts:
-                contacted += 1
-        rate = contacted / total
-        assert 0.05 < rate < 0.95
+
+        assert make() == make()
+
+    def test_cured_accounts_respond_more_often(self) -> None:
+        cured = sum(self._contact(s, True).responded for s in range(400))
+        not_cured = sum(self._contact(s, False).responded for s in range(400))
+        assert cured > not_cured
+
+    def test_response_follows_the_contact(self) -> None:
+        for seed in range(100):
+            contact = self._contact(seed, True)
+            if contact.responded:
+                assert contact.responded_at is not None
+                assert contact.responded_at > contact.sent_at
+            else:
+                assert contact.responded_at is None

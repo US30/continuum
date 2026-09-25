@@ -55,6 +55,7 @@ from continuum.foundation import (
     generate,
     sanctions,
     synthetic_sanctions,
+    true_uplift,
 )
 from continuum.telemetry.logging import configure_logging, get_logger
 
@@ -64,6 +65,7 @@ logger = get_logger(__name__)
 DEFAULT_N_PERSONS = 5_000
 SANCTIONS_CSV = Path("data") / "targets.simple.csv"
 SANCTIONS_PLANTED_CSV = Path("data") / "sanctions_planted.csv"  # eval-only truth (I4)
+TRUE_UPLIFT_CSV = Path("data") / "true_uplift.csv"  # eval-only truth (I4)
 
 # Fixed sentinel for the Phase-1 singleton entities described above — never used once
 # Phase 2's real resolution_run_id values exist, kept constant so re-runs are idempotent.
@@ -232,35 +234,39 @@ def _load_contact_history(
     for person in persons:
         entity_id = canonical_entity_by_person[person.person_id]
         for account in person.accounts:
-            states = delinquency.derive_delinquency_states(
-                account.payments, account.origination_date, generate.AS_OF_DATE
+            episode = account.episode
+            if episode is None or not episode.treated:
+                continue
+            contact = contact_policy.simulate_decision_contact(
+                entity_id,
+                account.account_id,
+                episode.decision_date,
+                episode.cured_60,
+                settings,
+                rng,
             )
-            simulated = contact_policy.simulate_contacts(
-                entity_id, account.account_id, float(account.exposure), states, settings, rng
+            channel_counts[contact.channel.value] += 1
+            contact_stmt = pg_insert(ContactEvent).values(
+                contact_id=uuid.uuid5(account.account_id, contact.sent_at.isoformat()),
+                case_id=None,
+                entity_id=entity_id,
+                account_id=account.account_id,
+                source=ContactSource.SIMULATED_HISTORY,
+                channel=contact.channel,
+                sent_at=contact.sent_at,
+                body_hash="synthetic",
+                guard_verdict=None,
+                responded=contact.responded,
+                responded_at=contact.responded_at,
             )
-            for contact in simulated:
-                channel_counts[contact.channel.value] += 1
-                contact_stmt = pg_insert(ContactEvent).values(
-                    contact_id=uuid.uuid5(account.account_id, contact.sent_at.isoformat()),
-                    case_id=None,
-                    entity_id=entity_id,
-                    account_id=account.account_id,
-                    source=ContactSource.SIMULATED_HISTORY,
-                    channel=contact.channel,
-                    sent_at=contact.sent_at,
-                    body_hash="synthetic",
-                    guard_verdict=None,
-                    responded=contact.responded,
-                    responded_at=contact.responded_at,
-                )
-                contact_stmt = contact_stmt.on_conflict_do_update(
-                    index_elements=["contact_id"],
-                    set_={
-                        "responded": contact_stmt.excluded.responded,
-                        "responded_at": contact_stmt.excluded.responded_at,
-                    },
-                )
-                session.execute(contact_stmt)
+            contact_stmt = contact_stmt.on_conflict_do_update(
+                index_elements=["contact_id"],
+                set_={
+                    "responded": contact_stmt.excluded.responded,
+                    "responded_at": contact_stmt.excluded.responded_at,
+                },
+            )
+            session.execute(contact_stmt)
     return channel_counts
 
 
@@ -330,6 +336,8 @@ def build(
         )
         logger.info("data_build.synthetic_sanctions", n_listings=n_synth, path=str(SANCTIONS_CSV))
 
+    true_uplift.write_true_uplift(persons, TRUE_UPLIFT_CSV)
+
     with session_scope() as session:
         _load_party_records_and_links(session, drafts, links)
         canonical_entity_by_person = _load_singletons(session, drafts)
@@ -342,6 +350,10 @@ def build(
     _print_summary(persons, drafts, links, channel_counts, sanctions_result)
 
 
+def _rate(episodes: list[generate.Episode]) -> float:
+    return sum(e.cured_60 for e in episodes) / max(len(episodes), 1)
+
+
 def _print_summary(
     persons: list[generate.SyntheticPerson],
     drafts: list[collisions.PartyRecordDraft],
@@ -350,7 +362,9 @@ def _print_summary(
     sanctions_result: tuple[uuid.UUID, int] | None,
 ) -> None:
     n_accounts = sum(len(p.accounts) for p in persons)
-    profile_counts = Counter(a.profile.value for p in persons for a in p.accounts)
+    episodes = [a.episode for p in persons for a in p.accounts if a.episode is not None]
+    treated = [e for e in episodes if e.treated]
+    untreated = [e for e in episodes if not e.treated]
     link_counts = Counter(link.collision_type.value for link in links)
 
     typer.echo("")
@@ -358,8 +372,13 @@ def _print_summary(
     typer.echo(f"persons:                {len(persons)}")
     typer.echo(f"party_records:          {len(drafts)}")
     typer.echo(f"accounts:               {n_accounts}")
-    for profile, count in sorted(profile_counts.items()):
-        typer.echo(f"  profile {profile:<16} {count}")
+    typer.echo(f"delinquency episodes:   {len(episodes)}")
+    typer.echo(f"  treated (contacted)   {len(treated)}")
+    typer.echo(
+        f"  observed cure rate    treated {_rate(treated):.3f}  untreated {_rate(untreated):.3f}"
+    )
+    ate = sum(e.p_cure_treated - e.p_cure_control for e in episodes) / max(len(episodes), 1)
+    typer.echo(f"  true average effect   {ate:+.3f} (oracle, eval-only)")
     typer.echo(f"ground_truth_link:      {len(links)}")
     for collision_type, count in sorted(link_counts.items()):
         typer.echo(f"  {collision_type:<24} {count}")

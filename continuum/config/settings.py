@@ -7,6 +7,7 @@ outside this file should hardcode a numeric business rule.
 
 from __future__ import annotations
 
+from datetime import date
 from functools import lru_cache
 from typing import Literal
 
@@ -47,6 +48,10 @@ class Settings(BaseSettings):
 
     # --- Data build (Phase 1) ---
     data_seed: int = 20260101
+    # The synthetic dataset's "today". Every derived state, contact and model label is
+    # relative to this date, never the wall clock (I6). Also bounds which episodes have a
+    # fully observed 60-day outcome window (continuum.scoring.features).
+    data_as_of_date: date = date(2026, 1, 1)
 
     # --- Telemetry ---
     otel_exporter_otlp_endpoint: str = ""

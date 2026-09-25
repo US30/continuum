@@ -116,3 +116,21 @@ class TestGuardIsSingleEgressPoint:
             path: mods for path, mods in hits.items() if guard_package not in path.parents
         }
         assert not disallowed, f"dispatch imported outside continuum/guard/: {disallowed}"
+
+
+class TestTrueUpliftIsEvalOnly:
+    """CLAUDE.md I4 (same rule as ground_truth_link): the oracle causal truth written by
+    continuum.foundation.true_uplift is readable only by eval/."""
+
+    def test_no_runtime_module_mentions_the_truth_file(self) -> None:
+        allowed = {
+            CONTINUUM_ROOT / "foundation" / "true_uplift.py",
+            CONTINUUM_ROOT / "foundation" / "causal.py",  # docstring documents the file
+            CONTINUUM_ROOT / "foundation" / "build.py",  # passes the output path to the writer
+        }
+        offenders = [
+            path
+            for path in _iter_python_files(CONTINUUM_ROOT)
+            if path not in allowed and "true_uplift" in path.read_text(encoding="utf-8")
+        ]
+        assert not offenders, f"runtime code touches the eval-only truth file: {offenders}"

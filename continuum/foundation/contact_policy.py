@@ -3,12 +3,17 @@
 CLAUDE.md §8: "Simulate a historical contact policy (rules-based: contact at 30 DPD
 weighted by exposure) so the uplift models have a treatment variable." CLAUDE.md also
 calls this "the highest-risk item in the whole build... scheduled first deliberately.
-Do not defer it." — hence the heavier test coverage in
-tests/foundation/test_contact_policy.py relative to the other Phase 1 modules.
+Do not defer it."
 
-The rules simulated here (trigger DPD, frequency cap, quiet hours) intentionally reuse the
-exact named settings the Phase 6 guard will enforce at runtime (Settings.contact_policy_*),
-so the historical treatment population and the live policy never silently diverge.
+The policy is exactly that sentence: on the day an account first reaches 30 DPD (its
+decision date), contact it with a probability that rises with exposure. Whether a contact
+happens is decided in continuum.foundation.generate (it must be drawn *before* the outcome,
+which depends on it — see continuum.foundation.causal); this module owns the policy
+function, the quiet-hours rule, and the contact record's timestamp/channel/response.
+
+Quiet hours reuse the exact named settings the Phase 6 guard will enforce at runtime
+(Settings.contact_policy_*), so history and live policy never silently diverge. The weekly
+frequency cap is a guard concern (one contact per episode here, so it cannot bind).
 """
 
 from __future__ import annotations
@@ -16,16 +21,17 @@ from __future__ import annotations
 import random
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 
 from continuum.config.settings import Settings
-from continuum.db.models.account import DelinquencyBucket
 from continuum.db.models.collections import ContactChannel
-from continuum.foundation.delinquency import StateInterval
 
-TRIGGER_BUCKETS = frozenset(
-    {DelinquencyBucket.DPD_30, DelinquencyBucket.DPD_60, DelinquencyBucket.DPD_90}
-)
+# Probability that a contacted account responds, by outcome. Response is a downstream
+# engagement signal for the (optional) response model; it is *not* the treatment effect,
+# which lives on cure (continuum.foundation.causal).
+RESPONSE_RATE_IF_CURED = 0.7
+RESPONSE_RATE_IF_NOT_CURED = 0.2
+RESPONSE_MAX_DAYS = 5
 
 
 @dataclass(frozen=True)
@@ -56,57 +62,31 @@ def is_quiet_hours(moment: datetime, settings: Settings) -> bool:
     return start <= hour < end
 
 
-def simulate_contacts(
+def simulate_decision_contact(
     entity_id: uuid.UUID,
     account_id: uuid.UUID,
-    exposure: float,
-    states: list[StateInterval],
+    decision_date: date,
+    cured_60: bool,
     settings: Settings,
     rng: random.Random,
-) -> list[SimulatedContact]:
-    """Contact the account whenever it is in a trigger bucket, subject to the weekly
-    frequency cap, quiet hours, and an exposure-weighted probability of being contacted
-    at all. Only fires on delinquency *intervals*, matching how the real nightly batch
-    would only see a bucket once it has already transitioned into it.
+) -> SimulatedContact:
+    """The one contact the rules policy sends for an episode, on its decision date, outside
+    quiet hours.
     """
-    min_gap_days = max(1, 7 // max(settings.contact_policy_max_contacts_per_week, 1))
+    sent_at = datetime.combine(decision_date, time(hour=rng.randint(9, 20)))
+    if is_quiet_hours(sent_at, settings):
+        safe_hour = (settings.contact_policy_quiet_hours_end + 1) % 24
+        sent_at = sent_at.replace(hour=safe_hour)
 
-    contacts: list[SimulatedContact] = []
-    last_contact_date = None
-
-    for interval in states:
-        if interval.state not in TRIGGER_BUCKETS:
-            continue
-        if (
-            last_contact_date is not None
-            and (interval.effective_from - last_contact_date).days < min_gap_days
-        ):
-            continue
-        if rng.random() >= contact_probability(exposure, settings):
-            continue
-
-        sent_at = datetime.combine(interval.effective_from, time(hour=rng.randint(9, 20)))
-        if is_quiet_hours(sent_at, settings):
-            safe_hour = (settings.contact_policy_quiet_hours_end + 1) % 24
-            sent_at = sent_at.replace(hour=safe_hour)
-
-        # Simulated response rate: a coarse proxy standing in for the real response model
-        # (Phase 4) — contacts made earlier in the delinquency lifecycle land a response
-        # more often than ones made once the account is already deep in DPD_90.
-        response_rate = 0.35 if interval.state == DelinquencyBucket.DPD_30 else 0.15
-        responded = rng.random() < response_rate
-        responded_at = sent_at + timedelta(days=rng.randint(1, 5)) if responded else None
-
-        contacts.append(
-            SimulatedContact(
-                entity_id=entity_id,
-                account_id=account_id,
-                channel=rng.choice([ContactChannel.SMS, ContactChannel.EMAIL]),
-                sent_at=sent_at,
-                responded=responded,
-                responded_at=responded_at,
-            )
-        )
-        last_contact_date = interval.effective_from
-
-    return contacts
+    responded = rng.random() < (RESPONSE_RATE_IF_CURED if cured_60 else RESPONSE_RATE_IF_NOT_CURED)
+    responded_at = (
+        sent_at + timedelta(days=rng.randint(1, RESPONSE_MAX_DAYS)) if responded else None
+    )
+    return SimulatedContact(
+        entity_id=entity_id,
+        account_id=account_id,
+        channel=rng.choice([ContactChannel.SMS, ContactChannel.EMAIL]),
+        sent_at=sent_at,
+        responded=responded,
+        responded_at=responded_at,
+    )
