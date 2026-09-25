@@ -48,7 +48,14 @@ from continuum.db.models.eval import GroundTruthLink
 from continuum.db.models.party import PartyRecord
 from continuum.db.models.screening import SanctionsAlias, SanctionsEntity
 from continuum.db.session import session_scope
-from continuum.foundation import collisions, contact_policy, delinquency, generate, sanctions
+from continuum.foundation import (
+    collisions,
+    contact_policy,
+    delinquency,
+    generate,
+    sanctions,
+    synthetic_sanctions,
+)
 from continuum.telemetry.logging import configure_logging, get_logger
 
 app = typer.Typer(add_completion=False)
@@ -56,6 +63,7 @@ logger = get_logger(__name__)
 
 DEFAULT_N_PERSONS = 5_000
 SANCTIONS_CSV = Path("data") / "targets.simple.csv"
+SANCTIONS_PLANTED_CSV = Path("data") / "sanctions_planted.csv"  # eval-only truth (I4)
 
 # Fixed sentinel for the Phase-1 singleton entities described above — never used once
 # Phase 2's real resolution_run_id values exist, kept constant so re-runs are idempotent.
@@ -111,7 +119,9 @@ def _load_party_records_and_links(
         session.execute(stmt)
 
 
-def _load_singletons(session: Session, drafts: list[collisions.PartyRecordDraft]) -> dict[uuid.UUID, uuid.UUID]:
+def _load_singletons(
+    session: Session, drafts: list[collisions.PartyRecordDraft]
+) -> dict[uuid.UUID, uuid.UUID]:
     """One singleton Entity + one EntityMember row per party_record. Returns
     {person_id: canonical_entity_id} — the loan_origination record's entity id for each
     person — for the account/contact loaders below, which is the only person-level fact
@@ -136,9 +146,7 @@ def _load_singletons(session: Session, drafts: list[collisions.PartyRecordDraft]
             record_id=draft.record_id,
             match_probability=Decimal("1.0"),
         )
-        member_stmt = member_stmt.on_conflict_do_nothing(
-            index_elements=["entity_id", "record_id"]
-        )
+        member_stmt = member_stmt.on_conflict_do_nothing(index_elements=["entity_id", "record_id"])
         session.execute(member_stmt)
 
         if draft.source_system == "loan_origination":
@@ -268,21 +276,26 @@ def _load_sanctions_snapshot(session: Session, csv_path: Path) -> tuple[uuid.UUI
     session.execute(delete(SanctionsAlias))
     session.execute(delete(SanctionsEntity))
 
-    for listing in listings:
-        session.add(
-            SanctionsEntity(
-                listing_id=listing.listing_id,
-                snapshot_id=snapshot_id,
-                primary_name=listing.primary_name,
-                schema_type=listing.schema_type,
-                birth_date=listing.birth_date,
-                countries=listing.countries,
-                topics=listing.topics,
-                is_current=True,
-            )
+    session.add_all(
+        SanctionsEntity(
+            listing_id=listing.listing_id,
+            snapshot_id=snapshot_id,
+            primary_name=listing.primary_name,
+            schema_type=listing.schema_type,
+            birth_date=listing.birth_date,
+            countries=listing.countries,
+            topics=listing.topics,
+            is_current=True,
         )
-        all_names = [listing.primary_name, *listing.aliases]
-        for name in all_names:
+        for listing in listings
+    )
+    # No ORM relationship() links alias to entity, so the unit of work does not order the
+    # inserts by foreign key — flush entities first or aliases hit an FK violation.
+    session.flush()
+
+    for listing in listings:
+        # dict.fromkeys: an alias identical to the primary name must not repeat (same alias_id).
+        for name in dict.fromkeys([listing.primary_name, *listing.aliases]):
             session.add(
                 SanctionsAlias(
                     alias_id=uuid.uuid5(uuid.NAMESPACE_URL, f"{listing.listing_id}:{name}"),
@@ -295,7 +308,9 @@ def _load_sanctions_snapshot(session: Session, csv_path: Path) -> tuple[uuid.UUI
 
 @app.command()
 def build(
-    n_persons: int = typer.Option(DEFAULT_N_PERSONS, help="Number of synthetic persons to generate."),
+    n_persons: int = typer.Option(
+        DEFAULT_N_PERSONS, help="Number of synthetic persons to generate."
+    ),
     seed: int | None = typer.Option(None, help="Override Settings.data_seed for this run."),
 ) -> None:
     settings = get_settings()
@@ -306,6 +321,14 @@ def build(
 
     persons = generate.generate_population(n_persons, effective_seed)
     drafts, links = collisions.build_party_records(persons, effective_seed)
+
+    if not SANCTIONS_CSV.exists():
+        # I8: no real personal data — fall back to a generated listing. A real export
+        # dropped at SANCTIONS_CSV is used as-is instead.
+        n_synth = synthetic_sanctions.write_synthetic_sanctions(
+            drafts, effective_seed, SANCTIONS_CSV, SANCTIONS_PLANTED_CSV
+        )
+        logger.info("data_build.synthetic_sanctions", n_listings=n_synth, path=str(SANCTIONS_CSV))
 
     with session_scope() as session:
         _load_party_records_and_links(session, drafts, links)

@@ -11,12 +11,22 @@ from continuum.db.models.account import Account, DelinquencyState, PaymentEvent
 from continuum.db.models.entity import Entity
 from continuum.db.models.eval import GroundTruthLink
 from continuum.db.models.party import PartyRecord
+from continuum.db.models.screening import SanctionsAlias, SanctionsEntity
 from continuum.db.session import session_scope
 from continuum.foundation.build import build
 
 pytestmark = pytest.mark.integration
 
-TABLES = (PartyRecord, Entity, Account, PaymentEvent, DelinquencyState, GroundTruthLink)
+TABLES = (
+    PartyRecord,
+    Entity,
+    Account,
+    PaymentEvent,
+    DelinquencyState,
+    GroundTruthLink,
+    SanctionsEntity,
+    SanctionsAlias,
+)
 
 
 def _row_counts() -> dict[str, int]:
