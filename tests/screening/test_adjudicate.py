@@ -49,7 +49,7 @@ def test_adjudicate_sends_evidence_through_the_gateway_only(
 
 
 def test_model_version_records_model_and_prompt_version() -> None:
-    assert adj.model_version("deepseek/deepseek-chat") == "deepseek/deepseek-chat::adjudicate_v2"
+    assert adj.model_version("deepseek/deepseek-chat") == "deepseek/deepseek-chat::adjudicate_v3"
 
 
 def test_prompt_files_for_the_current_version_exist() -> None:

@@ -1,6 +1,6 @@
 .PHONY: install lint format typecheck test test-all check \
         db-up db-down db-reset migrate revision data-build scan \
-        resolve resolve-metrics screen screen-metrics screen-metrics-llm train uplift-metrics worker cases
+        resolve resolve-metrics screen screen-metrics screen-metrics-llm train uplift-metrics worker cases injection
 
 COMPOSE = docker compose -f docker/docker-compose.yml
 RUN = conda run --no-capture-output -n continuum
@@ -92,3 +92,7 @@ worker:
 
 cases:
 	$(RUN) python -m continuum.workers.enqueue --limit 20
+
+# Phase 6 done-when: no prompt injection in the suite succeeds. Offline; exits 1 on any success.
+injection:
+	$(RUN) python -m eval.injection_suite

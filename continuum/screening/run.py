@@ -26,7 +26,7 @@ from continuum.db.models.risk_file import RiskFileEvent, RiskFileEventType
 from continuum.db.models.screening import ScreeningDecision, ScreeningMethod
 from continuum.db.session import session_scope
 from continuum.screening import candidates as candidates_mod
-from continuum.screening.adjudicate import adjudicate, model_version
+from continuum.screening.adjudicate import SuspiciousNameError, adjudicate, model_version
 from continuum.screening.bands import ScreeningBand, band_for_score
 from continuum.screening.candidates import ScreeningCandidate
 from continuum.screening.select import select_entities_for_screening
@@ -210,7 +210,19 @@ def run(
                 # is written, so a later run with the adjudicator on picks it up (I6).
                 outcome_counts["deferred_no_adjudicator"] += 1
                 continue
-            outcome = _decide_one(session, candidate, snapshot_id, band)
+            try:
+                outcome = _decide_one(session, candidate, snapshot_id, band)
+            except SuspiciousNameError:
+                # Never sent to the model; left undecided so the entity stays unresolved.
+                outcome_counts["held_suspicious_name"] += 1
+                continue
+            except Exception as exc:
+                # Model outage / bad key / malformed output: leave this candidate undecided
+                # (screening stays unresolved, outreach stays blocked) instead of aborting the
+                # whole run and rolling back every decision made so far.
+                logger.warning("screening.adjudication_failed", error=type(exc).__name__)
+                outcome_counts["adjudication_failed"] += 1
+                continue
             outcome_counts[outcome] += 1
 
     _print_summary(len(entity_ids), len(all_candidates), reached_model, outcome_counts)

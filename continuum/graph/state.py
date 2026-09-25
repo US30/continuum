@@ -17,7 +17,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
-from continuum.guard.models import GuardVerdict
+from continuum.guard.models import GuardVerdict, OutboundMessage
 from continuum.screening.status import ScreeningState
 
 FraudBand = Literal["clear", "ambiguous", "signature"]
@@ -129,6 +129,14 @@ class Route(BaseModel):
     note: str = ""
 
 
+class DispatchRequest(BaseModel):
+    """What the worker layer forwards to dispatch after a case clears. The graph only builds
+    this; it never sends (CLAUDE.md I2). Dispatch re-verifies the signed verdict itself."""
+
+    verdict: GuardVerdict
+    message: OutboundMessage
+
+
 class CaseState(BaseModel):
     entity_id: uuid.UUID
     as_of: date
@@ -140,4 +148,5 @@ class CaseState(BaseModel):
     draft: Draft | None = None
     guard: GuardVerdict | None = None
     route: Route | None = None
+    dispatch: DispatchRequest | None = None
     events: Annotated[list[str], operator.add] = Field(default_factory=list)

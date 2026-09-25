@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -148,7 +148,11 @@ def _state(priority: Priority, verdict: Verdict | None) -> CaseState:
     if verdict is not None:
         outcome = {Verdict.PASS: RuleOutcome.PASS}.get(verdict, RuleOutcome(verdict.value))
         guard = GuardVerdict(
-            verdict=verdict, rules=[RuleResult(rule_id="r", outcome=outcome, detail="d")]
+            verdict=verdict,
+            rules=[RuleResult(rule_id="r", outcome=outcome, detail="d")],
+            entity_id=uuid.uuid4(),
+            message_hash="0" * 64,
+            issued_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
     return CaseState(
         entity_id=uuid.uuid4(), as_of=date(2026, 1, 1), run_id="t", priority=priority, guard=guard

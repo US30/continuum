@@ -18,12 +18,14 @@ from continuum.telemetry.spans import node_span
 
 
 def guard_case(state: CaseState, deps: GraphDeps) -> dict[str, Any]:
-    with node_span("guard", state.entity_id):
+    with node_span("guard", state.entity_id) as usage:
         assert state.case is not None and state.priority is not None
         case, chosen = state.case, state.strategy.chosen if state.strategy else None
         flags = ["fraud_adjudication_unavailable"] if state.priority.needs_review else []
         verdict = evaluate(
             GuardInput(
+                entity_id=state.entity_id,
+                case_id=case.case_id,
                 screening=case.screening,
                 total_overdue=case.total_overdue,
                 channel=chosen.channel if chosen else None,
@@ -35,5 +37,9 @@ def guard_case(state: CaseState, deps: GraphDeps) -> dict[str, Any]:
                 upstream_flags=flags,
             ),
             deps.settings,
+            deps.tone,
         )
+        if verdict.tone is not None and verdict.tone.checked:
+            t = verdict.tone
+            usage.record(t.model, t.input_tokens, t.output_tokens, t.cost_usd)
         return {"guard": verdict, "events": [f"guard: {verdict.verdict.value} {verdict.reasons}"]}

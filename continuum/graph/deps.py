@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from continuum.config.models import LogicalNode
 from continuum.config.settings import Settings
+from continuum.guard.tone import ToneChecker
 from continuum.llm.client import LLMResult, complete_structured_with_usage
 from continuum.scoring.runtime import AccountScore
 
@@ -60,4 +61,5 @@ class GraphDeps:
     session_scope: Callable[[], AbstractContextManager[Session]]
     scorer: ScoreProvider
     llm: LLM
+    tone: ToneChecker
     settings: Settings

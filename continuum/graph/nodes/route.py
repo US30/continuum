@@ -30,8 +30,9 @@ from sqlalchemy.orm import Session
 from continuum.db.models.collections import Case, CaseDisposition
 from continuum.db.models.risk_file import RiskFileEvent, RiskFileEventType
 from continuum.graph.deps import GraphDeps
-from continuum.graph.state import CaseState, Route
-from continuum.guard.models import Verdict
+from continuum.graph.state import CaseState, DispatchRequest, Route
+from continuum.guard.engine import apply_human_approval
+from continuum.guard.models import GuardVerdict, OutboundMessage, Verdict
 from continuum.telemetry.spans import node_span
 
 EVENT_ID_NAMESPACE = uuid.UUID("00000000-0000-0000-0000-0000000000e5")
@@ -152,5 +153,26 @@ def route_case(state: CaseState, deps: GraphDeps) -> dict[str, Any]:
 
         update: dict[str, Any] = {"route": route, "events": [f"route: {route.route}"]}
         if override and guard is not None:
-            update["guard"] = guard.model_copy(update={"human_override": True})
+            # Only the guard can record an approval, and it re-signs the verdict.
+            guard = apply_human_approval(guard, route.reviewer or "unknown", deps.settings)
+            update["guard"] = guard
+        if route.route == "ready_for_dispatch" and guard is not None:
+            update["dispatch"] = _dispatch_request(state, guard)
         return update
+
+
+def _dispatch_request(state: CaseState, guard: GuardVerdict) -> DispatchRequest | None:
+    chosen = state.strategy.chosen if state.strategy else None
+    if chosen is None or state.draft is None or state.case is None:
+        return None
+    return DispatchRequest(
+        verdict=guard,
+        message=OutboundMessage(
+            entity_id=state.entity_id,
+            case_id=state.case.case_id,
+            channel=chosen.channel,
+            subject=state.draft.subject,
+            body=state.draft.body,
+            send_at=chosen.send_at,
+        ),
+    )

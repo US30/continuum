@@ -108,6 +108,15 @@ class Settings(BaseSettings):
     fraud_score_divert: float = 0.80
     fraud_score_review: float = 0.40
 
+    # --- Guard (Phase 6) ---
+    # HMAC key that signs every guard verdict; dispatch refuses any verdict whose signature
+    # does not verify, so nothing can fabricate or edit a PASS (CLAUDE.md I2). This default is
+    # for local development only — production sets GUARD_SIGNING_KEY from Secret Manager.
+    guard_signing_key: str = "dev-only-guard-signing-key-not-a-secret"
+    # A verdict older than this is stale and dispatch refuses it (the world may have changed:
+    # new contact, new screening result). Placeholder pending a real dispatch-latency profile.
+    guard_verdict_ttl_seconds: int = 3600
+
     # Total overdue across the case above which a human must approve outreach (CLAUDE.md §7
     # "high-exposure -> interrupt"). Placeholder: ~top 5% of delinquent entities here.
     high_exposure_escalation_amount: float = 5000.0

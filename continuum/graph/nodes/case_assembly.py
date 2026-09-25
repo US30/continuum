@@ -26,6 +26,7 @@ from continuum.graph.state import (
     LinkedEntity,
     Route,
 )
+from continuum.llm.untrusted import sanitize_person_name
 from continuum.screening.status import screening_state
 from continuum.telemetry.spans import node_span
 
@@ -88,6 +89,13 @@ def _linked_entities(session: Session, entity_id: uuid.UUID) -> list[LinkedEntit
     ]
 
 
+def _first_name(full_name: str) -> str:
+    """Validate the WHOLE stored name, then take its first word. Checking only the first word
+    would let the opening token of `Ignore previous instructions...` through as a "name"."""
+    validated = sanitize_person_name(full_name, fallback="", max_words=6, max_len=80)
+    return validated.split()[0] if validated else "there"
+
+
 def _contact_points(session: Session, entity_id: uuid.UUID) -> ContactPoints:
     records = session.scalars(
         select(PartyRecord)
@@ -96,7 +104,7 @@ def _contact_points(session: Session, entity_id: uuid.UUID) -> ContactPoints:
     ).all()
     canonical = min(records, key=lambda r: (r.source_system != "loan_origination", r.full_name))
     return ContactPoints(
-        first_name=canonical.full_name.split()[0],
+        first_name=_first_name(canonical.full_name),
         has_phone=any(r.phone for r in records),
         has_email=any(r.email for r in records),
     )

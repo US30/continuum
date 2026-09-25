@@ -20,6 +20,7 @@ from arq.connections import RedisSettings
 from continuum.config.settings import get_settings
 from continuum.graph.deps import GraphDeps
 from continuum.graph.run import default_deps, redis_checkpointer, run_case
+from continuum.guard.worker import dispatch_job
 from continuum.telemetry.logging import configure_logging, get_logger
 from continuum.telemetry.spans import configure_tracing
 
@@ -56,8 +57,15 @@ async def run_case_job(ctx: dict[str, Any], entity_id: str) -> dict[str, Any]:
         return {"status": "interrupted", "review": result["__interrupt__"][0].value}
     route = result["route"]
     priority = result.get("priority")
+    dispatch = result.get("dispatch")
+    if dispatch is not None:
+        # Forward by task name: this module never imports continuum.guard.dispatch (I2).
+        await ctx["redis"].enqueue_job(
+            "dispatch_job", dispatch.verdict.model_dump_json(), dispatch.message.model_dump_json()
+        )
     return {
         "status": "done",
+        "dispatch_enqueued": dispatch is not None,
         "route": route.route,
         "guard": result["guard"].verdict.value if result.get("guard") else None,
         "expected_net_recovery": priority.expected_net_recovery if priority else None,
@@ -70,7 +78,7 @@ def _redis_settings() -> RedisSettings:
 
 
 class WorkerSettings:
-    functions: ClassVar[list[Any]] = [run_case_job]
+    functions: ClassVar[list[Any]] = [run_case_job, dispatch_job]
     on_startup: ClassVar[Any] = startup
     on_shutdown: ClassVar[Any] = shutdown
     redis_settings: ClassVar[RedisSettings] = _redis_settings()

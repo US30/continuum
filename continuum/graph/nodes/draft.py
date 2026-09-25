@@ -15,10 +15,11 @@ from continuum.graph.deps import GraphDeps
 from continuum.graph.schemas import DraftOutput
 from continuum.graph.state import CaseState, CaseView, Draft
 from continuum.guard.rules import OPT_OUT_TEXT
+from continuum.llm.untrusted import wrap
 from continuum.telemetry.spans import node_span
 
 PROMPT_DIR = Path(__file__).parent.parent / "prompts"
-PROMPT_VERSION = "draft_v1"
+PROMPT_VERSION = "draft_v2"
 _SYSTEM = (PROMPT_DIR / f"{PROMPT_VERSION}_system.txt").read_text(encoding="utf-8")
 _USER = (PROMPT_DIR / f"{PROMPT_VERSION}_user.txt").read_text(encoding="utf-8")
 
@@ -48,7 +49,7 @@ def write_draft(state: CaseState, deps: GraphDeps) -> dict[str, Any]:
             return {"events": ["draft: skipped, no channel chosen"]}
 
         user = _USER.format(
-            first_name=case.contact.first_name,
+            first_name=wrap("first_name", case.contact.first_name, 40),
             channel=chosen.channel,
             total_overdue=f"{case.total_overdue:,.2f}",
             n_accounts=len(case.accounts),

@@ -27,6 +27,7 @@ from continuum.db.models.party import PartyRecord
 from continuum.db.models.screening import SanctionsEntity, ScreeningDecision, ScreeningMethod
 from continuum.db.session import session_scope
 from continuum.graph.deps import GraphDeps
+from continuum.guard.models import ToneResult
 from continuum.llm.client import LLMResult, LLMUsage
 from continuum.scoring.runtime import AccountScore
 from continuum.telemetry.spans import configure_tracing
@@ -75,6 +76,27 @@ def _default(node: str, model: type[BaseModel]) -> BaseModel:
     raise AssertionError(f"no default for {node}")
 
 
+class FakeTone:
+    """Tone checker double: acceptable by default, records what it was asked to review."""
+
+    def __init__(self, acceptable: bool = True, checked: bool = True) -> None:
+        self.acceptable, self.checked = acceptable, checked
+        self.messages: list[str] = []
+
+    def check(self, message: str, channel: str) -> ToneResult:
+        self.messages.append(message)
+        return ToneResult(
+            checked=self.checked,
+            acceptable=self.acceptable,
+            issues=[] if self.acceptable else ["too forceful"],
+            reason="" if self.checked else "tone check unavailable: test",
+            model="fake/tone",
+            input_tokens=50,
+            output_tokens=10,
+            cost_usd=0.00005,
+        )
+
+
 class FakeScorer:
     def __init__(self, uplift: float = 0.3) -> None:
         self.uplift = uplift
@@ -95,14 +117,22 @@ def llm() -> FakeLLM:
 def plain_deps(llm: FakeLLM) -> GraphDeps:
     """Deps for pure-logic tests: never touches the database."""
     return GraphDeps(
-        session_scope=session_scope, scorer=FakeScorer(), llm=llm, settings=get_settings()
+        session_scope=session_scope,
+        scorer=FakeScorer(),
+        llm=llm,
+        tone=FakeTone(),
+        settings=get_settings(),
     )
 
 
 @pytest.fixture
 def deps(llm: FakeLLM, _one_sanctions_snapshot: None) -> GraphDeps:
     return GraphDeps(
-        session_scope=session_scope, scorer=FakeScorer(), llm=llm, settings=get_settings()
+        session_scope=session_scope,
+        scorer=FakeScorer(),
+        llm=llm,
+        tone=FakeTone(),
+        settings=get_settings(),
     )
 
 
@@ -138,6 +168,7 @@ def make_entity(
     screening: str | None = "clear",
     phone: str | None = "555-0100",
     email: str | None = "sam@example.test",
+    full_name: str = "Sam Tester",
 ) -> uuid.UUID:
     """One entity with `n_delinquent` DPD_30 accounts, each with one unpaid installment."""
     entity_id, record_id = uuid.uuid4(), uuid.uuid4()
@@ -147,7 +178,7 @@ def make_entity(
             record_id=record_id,
             source_system="loan_origination",
             source_record_id=str(record_id),
-            full_name="Sam Tester",
+            full_name=full_name,
             date_of_birth=date(1980, 1, 1),
             phone=phone,
             email=email,

@@ -28,6 +28,7 @@ from continuum.graph.deps import DisabledLLM, GatewayLLM, GraphDeps
 from continuum.graph.nodes.route import ReviewDecision
 from continuum.graph.state import CaseState
 from continuum.guard import models as guard_models
+from continuum.guard.tone import DisabledToneChecker, LLMToneChecker
 from continuum.scoring.runtime import Scorer
 from continuum.screening import status as screening_status
 from continuum.telemetry.logging import hash_pii, set_correlation_id
@@ -49,6 +50,7 @@ def default_deps(settings: Settings | None = None) -> GraphDeps:
         session_scope=session_scope,
         scorer=Scorer.from_database(settings.data_as_of_date),
         llm=GatewayLLM() if settings.llm_enabled else DisabledLLM(),
+        tone=LLMToneChecker() if settings.llm_enabled else DisabledToneChecker(),
         settings=settings,
     )
 

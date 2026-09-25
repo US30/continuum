@@ -134,3 +134,18 @@ class TestTrueUpliftIsEvalOnly:
             if path not in allowed and "true_uplift" in path.read_text(encoding="utf-8")
         ]
         assert not offenders, f"runtime code touches the eval-only truth file: {offenders}"
+
+
+class TestOnlyDispatchRecordsRuntimeContacts:
+    """CLAUDE.md I2, second angle: a RUNTIME contact_event is the record that a message went
+    out, so only the guard's dispatch may write one."""
+
+    def test_runtime_contact_source_is_referenced_only_inside_the_guard_and_models(self) -> None:
+        allowed_dirs = (CONTINUUM_ROOT / "guard", CONTINUUM_ROOT / "db")
+        offenders = [
+            path
+            for path in _iter_python_files(CONTINUUM_ROOT)
+            if "ContactSource.RUNTIME" in path.read_text(encoding="utf-8")
+            and not any(d in path.parents for d in allowed_dirs)
+        ]
+        assert not offenders, f"runtime contacts written outside the guard: {offenders}"

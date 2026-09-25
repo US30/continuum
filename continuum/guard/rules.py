@@ -10,16 +10,21 @@ prompt-injection suite.
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from datetime import datetime
 
 from continuum.config.settings import Settings
+from continuum.guard.confusables import CONFUSABLES
 from continuum.guard.models import GuardInput, RuleOutcome, RuleResult
 from continuum.screening.status import ScreeningState
 
 # Phrases a collections message must never contain: threats, false urgency, third-party
-# disclosure. Lower-case substring match. A conservative starting list modelled on common
-# debt-collection conduct rules (FDCPA-style); not legal advice and not exhaustive — Phase 6
-# extends it and the injection suite attacks it.
+# disclosure. Matched on a *normalised* form of the text (see `match_variants`), so casing,
+# accents, look-alike letters, zero-width characters, l33t substitutions and letter-spacing
+# (`a r r e s t`) do not get around them. A conservative starting list modelled on common
+# debt-collection conduct rules (FDCPA-style); not legal advice and not exhaustive. A novel
+# paraphrase that is in no list is exactly what the LLM tone check exists to catch.
 PROHIBITED_TERMS: tuple[str, ...] = (
     "arrest",
     "jail",
@@ -28,6 +33,15 @@ PROHIBITED_TERMS: tuple[str, ...] = (
     "sue you",
     "lawsuit",
     "legal action",
+    "legal proceedings",
+    "attorney",
+    "lawyer",
+    "court date",
+    "in court",
+    "to court",
+    "criminal",
+    "warrant",
+    "sheriff",
     "garnish",
     "seize",
     "your employer",
@@ -38,6 +52,57 @@ PROHIBITED_TERMS: tuple[str, ...] = (
     "or else",
     "you will regret",
 )
+
+# Text that only an injected instruction would put in a customer message. If a drafting model
+# was talked into echoing guard- or model-directed meta-language, that is itself a reason to
+# block, whatever else the message says.
+INJECTION_MARKERS: tuple[str, ...] = (
+    "ignore previous",
+    "ignore all",
+    "ignore the above",
+    "disregard",
+    "system prompt",
+    "system:",
+    "verdict",
+    "untrusted_data",
+    "pre-approved",
+    "as an ai",
+    "```",
+)
+
+_LEET = str.maketrans(
+    {"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s", "!": "i"}
+)
+_SPACED_LETTERS = re.compile(r"(?<![a-z0-9])(?:[a-z][\W_]+){2,}[a-z](?![a-z0-9])")
+
+
+def _normalise(text: str) -> str:
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(
+        ch for ch in text if unicodedata.category(ch) not in {"Cf", "Cc", "Mn"} or ch in "\n\t"
+    )
+    return text.casefold().translate(CONFUSABLES)
+
+
+def match_variants(text: str) -> list[str]:
+    """Forms of `text` a rule should inspect: normalised, l33t-decoded, and with spaced-out
+    single letters rejoined. A term found in any of them counts."""
+    base = _normalise(text)
+    leet = base.translate(_LEET)
+    joined = _SPACED_LETTERS.sub(lambda m: re.sub(r"[\W_]+", "", m.group(0)), base)
+    return [base, leet, joined]
+
+
+def _found(terms: tuple[str, ...], text: str) -> list[str]:
+    variants = match_variants(text)
+    # A leading boundary stops `arrest` matching inside `carrest`; a trailing one is omitted
+    # on purpose so `arrested` and `arrests` still match.
+    return sorted(
+        term
+        for term in terms
+        if any(re.search(rf"(?<![a-z]){re.escape(term)}", variant) for variant in variants)
+    )
+
 
 OPT_OUT_TEXT = "Reply STOP to opt out."
 MAX_MESSAGE_CHARS = 600
@@ -109,11 +174,21 @@ def frequency_cap(inp: GuardInput, settings: Settings) -> RuleResult:
 
 
 def prohibited_terms(inp: GuardInput, settings: Settings) -> RuleResult:
-    lowered = inp.message_body.lower()
-    found = sorted(term for term in PROHIBITED_TERMS if term in lowered)
+    found = _found(PROHIBITED_TERMS, inp.message_body)
     if found:
         return _fail("prohibited_terms", RuleOutcome.BLOCK, f"message contains {found}")
     return _ok("prohibited_terms")
+
+
+def injection_markers(inp: GuardInput, settings: Settings) -> RuleResult:
+    found = _found(INJECTION_MARKERS, inp.message_body)
+    if found:
+        return _fail(
+            "injection_markers",
+            RuleOutcome.BLOCK,
+            f"message contains model/guard-directed text {found}",
+        )
+    return _ok("injection_markers")
 
 
 def opt_out_present(inp: GuardInput, settings: Settings) -> RuleResult:
@@ -161,6 +236,7 @@ ALL_RULES = (
     quiet_hours,
     frequency_cap,
     prohibited_terms,
+    injection_markers,
     opt_out_present,
     message_length,
     high_exposure,

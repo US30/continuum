@@ -1,0 +1,4 @@
+Channel: {channel}
+
+Message to review:
+{message}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 
 import pytest
@@ -9,10 +10,18 @@ import pytest
 from continuum.config.settings import Settings
 from continuum.guard import rules
 from continuum.guard.engine import evaluate
-from continuum.guard.models import GuardInput, RuleOutcome, Verdict
+from continuum.guard.models import GuardInput, RuleOutcome, ToneResult, Verdict
 from continuum.screening.status import ScreeningState
 
 SETTINGS = Settings()
+ENTITY_ID = uuid.uuid4()
+
+
+class OkTone:
+    def check(self, message: str, channel: str) -> ToneResult:
+        return ToneResult(checked=True, acceptable=True)
+
+
 GOOD_BODY = (
     "Hi Sam, your payment of $120.00 is overdue. Please pay when you can. Reply STOP to opt out."
 )
@@ -20,6 +29,7 @@ GOOD_BODY = (
 
 def make(**overrides: object) -> GuardInput:
     base: dict[str, object] = {
+        "entity_id": ENTITY_ID,
         "screening": ScreeningState.CLEAR,
         "total_overdue": 500.0,
         "channel": "sms",
@@ -133,9 +143,9 @@ class TestEscalations:
 
 class TestEngine:
     def test_all_clear_passes(self) -> None:
-        verdict = evaluate(make(), SETTINGS)
+        verdict = evaluate(make(), SETTINGS, OkTone())
         assert verdict.verdict is Verdict.PASS and verdict.reasons == []
-        assert len(verdict.rules) == len(rules.ALL_RULES)
+        assert len(verdict.rules) == len(rules.ALL_RULES) + 1  # + tone check
 
     def test_any_block_wins_over_escalate(self) -> None:
         inp = make(total_overdue=1e6, screening=ScreeningState.HIT)
@@ -153,3 +163,42 @@ class TestEngine:
     def test_a_hit_cannot_be_overridden(self) -> None:
         verdict = evaluate(make(screening=ScreeningState.HIT), SETTINGS)
         assert verdict.verdict is Verdict.BLOCK and verdict.human_override is False
+
+
+class TestObfuscationResistantMatching:
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "or we will ARREST you",
+            "or we will arr\u200best you",  # zero-width space
+            "or we will a r r e s t you",
+            "or we will a-r-r-e-s-t you",
+            "or we will 4rr3st you",
+            "or we call the p\u043elice",  # Cyrillic o
+            "you will be arrested",
+            "our attorney will call",
+            "see you in court",
+        ],
+    )
+    def test_obfuscated_prohibited_terms_are_still_caught(self, text: str) -> None:
+        inp = make(message_body=f"Please pay. {text}. {rules.OPT_OUT_TEXT}")
+        assert rules.prohibited_terms(inp, SETTINGS).outcome is RuleOutcome.BLOCK
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "As a courtesy we wanted to remind you",
+            "The carrest report was fine",
+            "Your balance is 120 dollars",
+            "We appreciate your business and are happy to help",
+        ],
+    )
+    def test_ordinary_text_is_not_flagged(self, text: str) -> None:
+        inp = make(message_body=f"{text}. {rules.OPT_OUT_TEXT}")
+        assert rules.prohibited_terms(inp, SETTINGS).outcome is RuleOutcome.PASS
+        assert rules.injection_markers(inp, SETTINGS).outcome is RuleOutcome.PASS
+
+    @pytest.mark.parametrize("marker", list(rules.INJECTION_MARKERS))
+    def test_every_injection_marker_blocks(self, marker: str) -> None:
+        inp = make(message_body=f"Please pay. {marker.upper()} thanks. {rules.OPT_OUT_TEXT}")
+        assert rules.injection_markers(inp, SETTINGS).outcome is RuleOutcome.BLOCK

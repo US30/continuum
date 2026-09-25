@@ -7,9 +7,9 @@ through continuum.llm, which reads this table — never a hardcoded model id at 
 CLAUDE.md §4 planned DeepSeek-V4 for prioritisation/strategy, Llama 3.2 8B for screening
 adjudication and the guard tone check, and Llama 3 8B 4-bit for drafting. By decision (user,
 Sept 2026) screening_adjudicator, prioritise, strategy and draft all run on the DeepSeek API
-(`deepseek-flash`, V4.1-Flash) instead of self-hosted Ollama; guard_tone is still the Phase 6
-placeholder. Synthetic data only (I8) makes the PII-residency reason for self-hosting moot for
-now — revisit before any real data.
+(`deepseek-flash`, V4.1-Flash) instead of self-hosted Ollama, and so does guard_tone (the
+Phase 6 tone check). Synthetic data only (I8) makes the PII-residency reason for self-hosting
+moot for now — revisit before any real data.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ MODEL_ROUTING: Final[dict[LogicalNode, str]] = {
     "prioritise": "deepseek/deepseek-flash",
     "strategy": "deepseek/deepseek-flash",
     "draft": "deepseek/deepseek-flash",
-    "guard_tone": "ollama/llama3.2:8b",
+    "guard_tone": "deepseek/deepseek-flash",
 }
 
 

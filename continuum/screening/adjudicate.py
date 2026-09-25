@@ -16,32 +16,47 @@ from __future__ import annotations
 from pathlib import Path
 
 from continuum.llm.client import complete_structured
+from continuum.llm.untrusted import sanitize_person_name, wrap
 from continuum.screening.candidates import ScreeningCandidate
 from continuum.screening.schemas import AdjudicationVerdict
 
 PROMPT_DIR = Path(__file__).parent / "prompts"
-PROMPT_VERSION = "adjudicate_v2"
+PROMPT_VERSION = "adjudicate_v3"
 
 _SYSTEM_PROMPT = (PROMPT_DIR / f"{PROMPT_VERSION}_system.txt").read_text(encoding="utf-8")
 _USER_PROMPT_TEMPLATE = (PROMPT_DIR / f"{PROMPT_VERSION}_user.txt").read_text(encoding="utf-8")
 
 
-def adjudicate(candidate: ScreeningCandidate) -> AdjudicationVerdict:
-    user_prompt = _USER_PROMPT_TEMPLATE.format(
-        customer_name=candidate.entity_name,
+class SuspiciousNameError(ValueError):
+    """The customer's stored name is not a plausible name (it contains punctuation, digits or
+    length no real name has). It could be an attempt to talk the adjudicator into clearing a
+    true hit, so no model call is made and the candidate stays *undecided* — which keeps the
+    entity's screening UNRESOLVED and blocks outreach (fail closed, CLAUDE.md I5)."""
+
+
+def build_prompt(candidate: ScreeningCandidate) -> str:
+    """The user prompt for one candidate. The customer name is validated as a name first
+    (a hostile name is refused, not cleaned), then every free-text value is fenced as data."""
+    if not sanitize_person_name(candidate.entity_name, fallback="", max_words=6, max_len=80):
+        raise SuspiciousNameError("customer name is not a plausible name")
+    return _USER_PROMPT_TEMPLATE.format(
+        customer_name=wrap("customer_name", candidate.entity_name),
         customer_dob=candidate.entity_date_of_birth or "unknown",
-        listing_name=candidate.listing_primary_name,
-        matched_alias=candidate.matched_alias,
+        listing_name=wrap("listing_name", candidate.listing_primary_name),
+        matched_alias=wrap("matched_alias", candidate.matched_alias),
         listing_dob=candidate.listing_birth_date or "unknown",
-        listing_countries=candidate.listing_countries or "unknown",
-        listing_topics=candidate.listing_topics or "unknown",
+        listing_countries=wrap("countries", candidate.listing_countries or "unknown", 60),
+        listing_topics=wrap("topics", candidate.listing_topics or "unknown", 60),
         similarity=candidate.name_similarity,
         dob_evidence=candidate.dob_evidence.value,
     )
+
+
+def adjudicate(candidate: ScreeningCandidate) -> AdjudicationVerdict:
     return complete_structured(
         node="screening_adjudicator",
         system_prompt=_SYSTEM_PROMPT,
-        user_prompt=user_prompt,
+        user_prompt=build_prompt(candidate),
         response_model=AdjudicationVerdict,
     )
 
