@@ -1,0 +1,10 @@
+CASE
+  delinquent accounts: {n_accounts}
+  total overdue: {total_overdue}
+  days past due (max): {max_dpd}
+
+NETWORK EVIDENCE (deterministic)
+  strong links (shared address or phone): {n_strong}
+  ...of which also delinquent: {n_strong_delinquent}
+  weak links (name similarity only): {n_weak}
+  fraud score (0-1): {fraud_score}

@@ -1,0 +1,5 @@
+Customer first name: {first_name}
+Channel: {channel}
+Total overdue: {total_overdue}
+Overdue accounts: {n_accounts} ({products})
+Longest delinquency: {max_dpd} days

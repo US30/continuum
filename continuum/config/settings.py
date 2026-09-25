@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     litellm_base_url: str = ""
     litellm_api_key: str = ""
     deepseek_api_key: str = ""
+    # False = make no model call at all: every LLM node uses its deterministic fallback
+    # (first legal option, fixed neutral template, no fraud adjudication -> human review).
+    llm_enabled: bool = True
 
     # --- Data build (Phase 1) ---
     data_seed: int = 20260101
@@ -55,6 +58,7 @@ class Settings(BaseSettings):
 
     # --- Telemetry ---
     otel_exporter_otlp_endpoint: str = ""
+    otel_console: bool = False  # print every span to stdout (local demos)
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
     langfuse_host: str = ""
@@ -87,6 +91,26 @@ class Settings(BaseSettings):
     # many days (typo / off-by-a-day entry), or has day and month swapped. Golden set
     # hp-011 (1 day) and hp-013 (day/month swap) are true matches this must accept.
     screening_dob_near_miss_days: int = 31
+
+    # --- Decisioning graph (Phase 5) ---
+    # Cost of one outreach (message send + agent/handling overhead), USD. A case is only
+    # worth contacting if expected incremental recovery exceeds it. Placeholder: chosen to be
+    # small against the median overdue amount (~$860) yet large enough to skip contacts whose
+    # expected gain is only cents; not derived from a real cost model.
+    contact_cost_per_case: float = 1.50
+
+    # Deterministic network fraud score = 0.5*min(strong_links/3,1) + 0.5*min(delinquent
+    # strong_links/3,1), over shared-address/phone links only (name similarity is weak
+    # evidence and excluded). At/above `divert` the case leaves collections; between
+    # `review` and `divert` the LLM adjudicates; below `review` it is ordinary collections.
+    # Placeholders — the synthetic data has no planted fraud rings to calibrate on
+    # (Phase 7's network-value metric will need them).
+    fraud_score_divert: float = 0.80
+    fraud_score_review: float = 0.40
+
+    # Total overdue across the case above which a human must approve outreach (CLAUDE.md §7
+    # "high-exposure -> interrupt"). Placeholder: ~top 5% of delinquent entities here.
+    high_exposure_escalation_amount: float = 5000.0
 
     # Delinquency state machine (Phase 1). Standard US consumer-lending DPD buckets.
     delinquency_buckets_days: tuple[int, ...] = (30, 60, 90)

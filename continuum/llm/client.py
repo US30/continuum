@@ -19,11 +19,13 @@ from __future__ import annotations
 
 import json
 import time
+from dataclasses import dataclass
+from typing import Any
 
 import litellm
 from pydantic import BaseModel, ValidationError
 
-from continuum.config.models import LogicalNode, model_for
+from continuum.config.models import LogicalNode, cost_usd, model_for
 from continuum.config.settings import get_settings
 from continuum.telemetry.logging import get_logger
 
@@ -64,6 +66,9 @@ class CircuitBreaker:
         self._consecutive_failures = 0
         self._opened_at = None
 
+    def trip(self) -> None:
+        self._opened_at = time.monotonic()
+
     def record_failure(self) -> None:
         self._consecutive_failures += 1
         if self._consecutive_failures >= self.failure_threshold:
@@ -87,6 +92,47 @@ def _api_key_for(model_id: str, gateway_key: str, deepseek_key: str) -> str | No
     return None
 
 
+@dataclass
+class LLMUsage:
+    """Tokens and cost across every attempt of one logical call (retries included)."""
+
+    model: str = ""
+    calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_hit_tokens: int = 0
+    cost_usd: float = 0.0
+
+    def add(self, other: LLMUsage) -> None:
+        self.model = other.model or self.model
+        self.calls += other.calls
+        self.input_tokens += other.input_tokens
+        self.output_tokens += other.output_tokens
+        self.cache_hit_tokens += other.cache_hit_tokens
+        self.cost_usd += other.cost_usd
+
+
+@dataclass
+class LLMResult[T: BaseModel]:
+    parsed: T
+    usage: LLMUsage
+
+
+def _usage_from(model_id: str, response: Any) -> LLMUsage:
+    usage = getattr(response, "usage", None)
+    prompt = int(getattr(usage, "prompt_tokens", 0) or 0)
+    completion = int(getattr(usage, "completion_tokens", 0) or 0)
+    cache_hit = int(getattr(usage, "prompt_cache_hit_tokens", 0) or 0)
+    return LLMUsage(
+        model=model_id,
+        calls=1,
+        input_tokens=prompt,
+        output_tokens=completion,
+        cache_hit_tokens=cache_hit,
+        cost_usd=cost_usd(model_id, prompt, cache_hit, completion),
+    )
+
+
 def complete_structured[T: BaseModel](
     node: LogicalNode,
     system_prompt: str,
@@ -95,13 +141,29 @@ def complete_structured[T: BaseModel](
     *,
     temperature: float = 0.0,
 ) -> T:
+    """Same as complete_structured_with_usage, discarding the usage."""
+    return complete_structured_with_usage(
+        node, system_prompt, user_prompt, response_model, temperature=temperature
+    ).parsed
+
+
+def complete_structured_with_usage[T: BaseModel](
+    node: LogicalNode,
+    system_prompt: str,
+    user_prompt: str,
+    response_model: type[T],
+    *,
+    temperature: float = 0.0,
+) -> LLMResult[T]:
     """Calls the model routed to `node` (continuum.config.models.model_for) and parses its
     response as JSON into `response_model`. Retries on malformed JSON and on transport/
     provider failures; provider failures also count toward that node's circuit breaker.
+    Usage (tokens, USD) sums every attempt, since a malformed response is still billed.
     """
     settings = get_settings()
     model_id = model_for(node)
     breaker = _circuit_breaker_for(node)
+    total = LLMUsage(model=model_id)
 
     last_error: Exception | None = None
     for attempt in range(1, MAX_RETRIES + 1):
@@ -118,18 +180,24 @@ def complete_structured[T: BaseModel](
                 api_key=_api_key_for(model_id, settings.litellm_api_key, settings.deepseek_api_key),
                 response_format={"type": "json_object"},
             )
+            total.add(_usage_from(model_id, response))
             content = response.choices[0].message.content
             parsed = response_model.model_validate(json.loads(content))
         except (json.JSONDecodeError, ValidationError) as exc:
             last_error = exc
             logger.warning("llm.malformed_response", node=node, attempt=attempt, error=str(exc))
+        except litellm.exceptions.AuthenticationError:
+            # A bad or missing key cannot succeed on retry: trip the breaker and fail now
+            # instead of sleeping through retries on every call.
+            breaker.trip()
+            raise
         except Exception as exc:
             last_error = exc
             breaker.record_failure()
             logger.warning("llm.call_failed", node=node, attempt=attempt, error=str(exc))
         else:
             breaker.record_success()
-            return parsed
+            return LLMResult(parsed=parsed, usage=total)
 
         if attempt < MAX_RETRIES:
             time.sleep(RETRY_BACKOFF_SECONDS * attempt)

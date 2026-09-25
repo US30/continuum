@@ -1,6 +1,6 @@
 .PHONY: install lint format typecheck test test-all check \
         db-up db-down db-reset migrate revision data-build scan \
-        resolve resolve-metrics screen screen-metrics screen-metrics-llm train uplift-metrics
+        resolve resolve-metrics screen screen-metrics screen-metrics-llm train uplift-metrics worker cases
 
 COMPOSE = docker compose -f docker/docker-compose.yml
 RUN = conda run --no-capture-output -n continuum
@@ -85,3 +85,10 @@ train:
 # Phase 4 done-when: Metric 2 — incremental recovery of uplift ranking vs the rules baseline.
 uplift-metrics:
 	$(RUN) python -m eval.uplift_metrics
+
+# Phase 5: the decisioning graph. Start the worker in one terminal, enqueue in another.
+worker:
+	$(RUN) arq continuum.workers.tasks.WorkerSettings
+
+cases:
+	$(RUN) python -m continuum.workers.enqueue --limit 20

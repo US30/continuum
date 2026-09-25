@@ -1,0 +1,7 @@
+CASE
+  total overdue: {total_overdue}
+  days past due (max): {max_dpd}
+  delinquent accounts: {n_accounts}
+
+ALLOWED OPTIONS
+{options}
