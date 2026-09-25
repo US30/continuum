@@ -29,6 +29,7 @@ def _entity(session) -> uuid.UUID:
             resolution_run_id=SINGLETON_RUN_ID,
         )
     )
+    session.flush()
     return entity_id
 
 
@@ -54,6 +55,7 @@ class TestSelectEntitiesForScreening:
                     outcome="clear",
                 )
             )
+            session.flush()
 
         since = datetime.now(UTC) - timedelta(days=1)
         with session_scope() as session:
@@ -72,6 +74,7 @@ class TestSelectEntitiesForScreening:
                     outcome="clear",
                 )
             )
+            session.flush()
             account_id = uuid.uuid4()
             session.add(
                 Account(
@@ -83,6 +86,7 @@ class TestSelectEntitiesForScreening:
                     current_state=DelinquencyBucket.DPD_30,
                 )
             )
+            session.flush()
             now = datetime.now(UTC)
             session.add(
                 DelinquencyState(
@@ -93,6 +97,7 @@ class TestSelectEntitiesForScreening:
                     days_past_due=30,
                 )
             )
+            session.flush()
 
         since = datetime.now(UTC) - timedelta(hours=1)
         with session_scope() as session:
@@ -111,6 +116,7 @@ class TestSelectEntitiesForScreening:
                     outcome="clear",
                 )
             )
+            session.flush()
             account_id = uuid.uuid4()
             session.add(
                 Account(
@@ -122,6 +128,7 @@ class TestSelectEntitiesForScreening:
                     current_state=DelinquencyBucket.CURED,
                 )
             )
+            session.flush()
             old = datetime.now(UTC) - timedelta(days=100)
             session.add(
                 DelinquencyState(
@@ -132,6 +139,7 @@ class TestSelectEntitiesForScreening:
                     days_past_due=0,
                 )
             )
+            session.flush()
 
         since = datetime.now(UTC) - timedelta(hours=1)
         with session_scope() as session:

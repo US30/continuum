@@ -29,6 +29,7 @@ def _record(session, name: str) -> uuid.UUID:
             date_of_birth=date(1980, 1, 1),
         )
     )
+    session.flush()
     return record_id
 
 
@@ -42,11 +43,13 @@ def _entity(session) -> uuid.UUID:
             resolution_run_id=uuid.uuid4(),
         )
     )
+    session.flush()
     return entity_id
 
 
 def _member(session, entity_id: uuid.UUID, record_id: uuid.UUID) -> None:
     session.add(EntityMember(entity_id=entity_id, record_id=record_id, match_probability=1.0))
+    session.flush()
 
 
 class TestComputeResolutionMetrics:
@@ -64,6 +67,7 @@ class TestComputeResolutionMetrics:
                     collision_type=CollisionType.SAME_PERSON,
                 )
             )
+            session.flush()
 
         with session_scope() as session:
             metrics = compute_resolution_metrics(session)
@@ -82,6 +86,7 @@ class TestComputeResolutionMetrics:
                     collision_type=CollisionType.SAME_PERSON,
                 )
             )
+            session.flush()
 
         with session_scope() as session:
             metrics = compute_resolution_metrics(session)
@@ -101,6 +106,7 @@ class TestComputeResolutionMetrics:
                     collision_type=CollisionType.HARD_NEGATIVE,
                 )
             )
+            session.flush()
 
         with session_scope() as session:
             metrics = compute_resolution_metrics(session)
@@ -119,6 +125,7 @@ class TestComputeResolutionMetrics:
                     collision_type=CollisionType.HARD_NEGATIVE,
                 )
             )
+            session.flush()
 
         with session_scope() as session:
             metrics = compute_resolution_metrics(session)

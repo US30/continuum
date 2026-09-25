@@ -32,6 +32,7 @@ def _make_party_record(session, record_id: uuid.UUID, name: str) -> None:
             date_of_birth=date(1980, 1, 1),
         )
     )
+    session.flush()
 
 
 def _make_singleton(session, record_id: uuid.UUID) -> uuid.UUID:
@@ -44,9 +45,11 @@ def _make_singleton(session, record_id: uuid.UUID) -> uuid.UUID:
             resolution_run_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
         )
     )
+    session.flush()
     session.add(
         EntityMember(entity_id=entity_id, record_id=record_id, match_probability=Decimal("1.0"))
     )
+    session.flush()
     return entity_id
 
 
@@ -71,6 +74,7 @@ class TestApplyResolution:
                     current_state=DelinquencyBucket.CURRENT,
                 )
             )
+            session.flush()
 
         record_ids = tuple(sorted([record_a, record_b]))
         survivor_id = stable_cluster_id(list(record_ids))

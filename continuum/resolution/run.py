@@ -54,11 +54,12 @@ def resolve() -> tuple[int, int, int]:
     records["record_id"] = records["record_id"].astype(str)
 
     linker = build_linker(records)
-    predictions = linker.predict()
-    clustered = linker.cluster_pairwise_predictions_at_threshold(
+    predictions = linker.inference.predict()
+    clustered = linker.clustering.cluster_pairwise_predictions_at_threshold(
         predictions, threshold_match_probability=MATCH_PROBABILITY_THRESHOLD
     )
-    cluster_rows = clustered.as_pandas_dataframe().to_dict("records")
+    cluster_df = clustered.as_pandas_dataframe()  # type: ignore[no-untyped-call]
+    cluster_rows = cluster_df.to_dict("records")
     clusters = clusters_from_predictions(cluster_rows)
 
     resolution_run_id = uuid.uuid4()

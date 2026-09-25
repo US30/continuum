@@ -9,9 +9,12 @@ so each rule only needs to catch the cases the others miss, not be safe on its o
 
 from __future__ import annotations
 
-from splink import block_on
+from typing import Any
 
-BLOCKING_RULES = [
+from splink import block_on
+from splink.internals.blocking_rule_creator import BlockingRuleCreator
+
+BLOCKING_RULES: list[BlockingRuleCreator | dict[str, Any]] = [
     # Two records citing the same national id are near-certainly the same person, even if
     # every other field (name, address) has drifted.
     block_on("national_id"),

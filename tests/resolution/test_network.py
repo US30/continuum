@@ -39,6 +39,7 @@ def _entity_with_record(
             phone=phone,
         )
     )
+    session.flush()
     session.add(
         Entity(
             entity_id=entity_id,
@@ -47,9 +48,11 @@ def _entity_with_record(
             resolution_run_id=SINGLETON_RUN_ID,
         )
     )
+    session.flush()
     session.add(
         EntityMember(entity_id=entity_id, record_id=record_id, match_probability=Decimal("1.0"))
     )
+    session.flush()
     return entity_id
 
 
@@ -63,13 +66,13 @@ class TestMaterialiseNetwork:
             materialise_network(session)
 
         with session_scope() as session:
-            edges = session.scalars(
-                select(EntityEdge).where(
+            edge_types = session.scalars(
+                select(EntityEdge.edge_type).where(
                     EntityEdge.entity_id_a.in_([entity_1, entity_2]),
                     EntityEdge.entity_id_b.in_([entity_1, entity_2]),
                 )
             ).all()
-        assert any(e.edge_type.value == "shared_address" for e in edges)
+        assert any(t.value == "shared_address" for t in edge_types)
 
     def test_unrelated_entities_produce_no_edge(self) -> None:
         with session_scope() as session:

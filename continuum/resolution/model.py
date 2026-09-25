@@ -24,6 +24,7 @@ from typing import Any
 
 import splink.comparison_library as cl
 from splink import DuckDBAPI, Linker, SettingsCreator
+from splink.internals.comparison_creator import ComparisonCreator
 
 from continuum.resolution.blocking import BLOCKING_RULES
 
@@ -49,7 +50,7 @@ DATE_OF_BIRTH_COMPARISON = cl.ExactMatch("date_of_birth")
 POSTAL_CODE_COMPARISON = cl.ExactMatch("postal_code")
 PHONE_COMPARISON = cl.ExactMatch("phone")
 
-COMPARISONS = [
+COMPARISONS: list[ComparisonCreator | dict[str, Any]] = [
     NAME_COMPARISON,
     DATE_OF_BIRTH_COMPARISON,
     NATIONAL_ID_COMPARISON,

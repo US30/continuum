@@ -63,6 +63,9 @@ def apply_resolution(
         absorbed_ids = member_entity_ids - {survivor_id}
 
         _upsert_survivor_entity(session, survivor_id, cluster, resolution_run_id)
+        # autoflush is off (continuum.db.session): the survivor row must exist before the
+        # bulk UPDATEs below point foreign keys at it.
+        session.flush()
 
         session.execute(
             update(EntityMember)
