@@ -146,7 +146,12 @@ def _decide_one(
     return f"adjudicated_{verdict.verdict}"
 
 
-def run(hours_back: int = 24, adjudicate_enabled: bool = True, full: bool = False) -> None:
+def run(
+    hours_back: int = 24,
+    adjudicate_enabled: bool = True,
+    full: bool = False,
+    max_adjudications: int | None = None,
+) -> None:
     settings = get_settings()
     since = datetime.now(UTC) - timedelta(hours=hours_back)
 
@@ -191,6 +196,15 @@ def run(hours_back: int = 24, adjudicate_enabled: bool = True, full: bool = Fals
             )
             if band == ScreeningBand.ADJUDICATE:
                 reached_model += 1
+            if (
+                band == ScreeningBand.ADJUDICATE
+                and max_adjudications is not None
+                and reached_model > max_adjudications
+            ):
+                # Spend guard: cap on paid LLM calls per run; the rest stay undecided
+                # and are picked up by a later run (nothing written, I6).
+                outcome_counts["deferred_over_cap"] += 1
+                continue
             if band == ScreeningBand.ADJUDICATE and not adjudicate_enabled:
                 # No LLM available: leave the candidate undecided rather than guess. Nothing
                 # is written, so a later run with the adjudicator on picks it up (I6).
@@ -220,13 +234,16 @@ def _print_summary(
 def main(
     hours_back: int = typer.Option(24, help="Look-back window for delinquency-state changes."),
     full: bool = typer.Option(False, help="Screen every entity, not just new/changed ones."),
+    max_adjudications: int | None = typer.Option(
+        None, help="Cap on LLM calls this run (spend guard); the rest are deferred."
+    ),
     adjudicate: bool = typer.Option(
         True, "--adjudicate/--no-adjudicate", help="Call the LLM adjudicator for the middle band."
     ),
 ) -> None:
     configure_logging(get_settings().log_level)
     logger.info("screening.start")
-    run(hours_back, adjudicate, full)
+    run(hours_back, adjudicate, full, max_adjudications)
 
 
 if __name__ == "__main__":

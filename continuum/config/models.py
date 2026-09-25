@@ -24,7 +24,7 @@ LogicalNode = Literal[
 
 # LiteLLM model identifiers, served locally via Ollama/vLLM (CLAUDE.md §4: PII residency).
 MODEL_ROUTING: Final[dict[LogicalNode, str]] = {
-    "screening_adjudicator": "deepseek/deepseek-chat",
+    "screening_adjudicator": "deepseek/deepseek-flash",
     "prioritise": "ollama/deepseek-v4",
     "strategy": "ollama/deepseek-v4",
     "draft": "ollama/llama3:8b-q4_0",
