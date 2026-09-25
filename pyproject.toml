@@ -99,6 +99,11 @@ warn_unused_configs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 
+# Third-party libs without inline types; installed per phase (resolution/llm extras).
+[[tool.mypy.overrides]]
+module = ["splink", "splink.*", "litellm", "litellm.*", "pandas", "pandas.*"]
+ignore_missing_imports = true
+
 [[tool.mypy.overrides]]
 module = ["continuum.graph.*", "continuum.guard.*", "continuum.llm.*"]
 strict = true

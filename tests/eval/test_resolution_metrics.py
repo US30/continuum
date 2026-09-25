@@ -125,13 +125,17 @@ class TestComputeResolutionMetrics:
         assert metrics.true_negative >= 1
 
     def test_precision_recall_f1_formulas(self) -> None:
-        metrics = ResolutionMetrics(true_positive=3, false_negative=1, false_positive=1, true_negative=5)
+        metrics = ResolutionMetrics(
+            true_positive=3, false_negative=1, false_positive=1, true_negative=5
+        )
         assert metrics.precision == pytest.approx(0.75)
         assert metrics.recall == pytest.approx(0.75)
         assert metrics.f1 == pytest.approx(0.75)
 
     def test_no_positives_returns_none_rather_than_dividing_by_zero(self) -> None:
-        metrics = ResolutionMetrics(true_positive=0, false_negative=0, false_positive=0, true_negative=0)
+        metrics = ResolutionMetrics(
+            true_positive=0, false_negative=0, false_positive=0, true_negative=0
+        )
         assert metrics.precision is None
         assert metrics.recall is None
         assert metrics.f1 is None

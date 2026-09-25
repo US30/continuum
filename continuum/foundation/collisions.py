@@ -17,6 +17,7 @@ from __future__ import annotations
 import random
 import uuid
 from dataclasses import dataclass
+from itertools import pairwise
 
 from faker import Faker
 
@@ -96,7 +97,7 @@ def build_party_records(
             )
             person_record_ids.append(dup_id)
 
-        for record_a, record_b in zip(person_record_ids, person_record_ids[1:], strict=False):
+        for record_a, record_b in pairwise(person_record_ids):
             links.append(PlantedLink(record_a, record_b, CollisionType.SAME_PERSON))
 
     _plant_hard_negatives(records, links, rng)

@@ -77,9 +77,11 @@ def simulate_contacts(
     for interval in states:
         if interval.state not in TRIGGER_BUCKETS:
             continue
-        if last_contact_date is not None:
-            if (interval.effective_from - last_contact_date).days < min_gap_days:
-                continue
+        if (
+            last_contact_date is not None
+            and (interval.effective_from - last_contact_date).days < min_gap_days
+        ):
+            continue
         if rng.random() >= contact_probability(exposure, settings):
             continue
 

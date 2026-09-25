@@ -28,9 +28,7 @@ def _edge_id(entity_id_a: uuid.UUID, entity_id_b: uuid.UUID, edge_type: str) -> 
 def materialise_network(session: Session) -> int:
     """Returns the number of edges written."""
     candidates = session.execute(
-        text(
-            "SELECT entity_id_a, entity_id_b, edge_type, strength FROM entity_edge_candidate"
-        )
+        text("SELECT entity_id_a, entity_id_b, edge_type, strength FROM entity_edge_candidate")
     ).all()
 
     session.execute(delete(EntityEdge))

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -22,7 +22,12 @@ SINGLETON_RUN_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 def _entity(session) -> uuid.UUID:
     entity_id = uuid.uuid4()
     session.add(
-        Entity(entity_id=entity_id, cluster_size=1, confidence=Decimal("1.0"), resolution_run_id=SINGLETON_RUN_ID)
+        Entity(
+            entity_id=entity_id,
+            cluster_size=1,
+            confidence=Decimal("1.0"),
+            resolution_run_id=SINGLETON_RUN_ID,
+        )
     )
     return entity_id
 
@@ -32,7 +37,7 @@ class TestSelectEntitiesForScreening:
         with session_scope() as session:
             entity_id = _entity(session)
 
-        since = datetime.now(timezone.utc) - timedelta(days=1)
+        since = datetime.now(UTC) - timedelta(days=1)
         with session_scope() as session:
             selected = select_entities_for_screening(session, since)
         assert entity_id in selected
@@ -50,7 +55,7 @@ class TestSelectEntitiesForScreening:
                 )
             )
 
-        since = datetime.now(timezone.utc) - timedelta(days=1)
+        since = datetime.now(UTC) - timedelta(days=1)
         with session_scope() as session:
             selected = select_entities_for_screening(session, since)
         assert entity_id not in selected
@@ -78,7 +83,7 @@ class TestSelectEntitiesForScreening:
                     current_state=DelinquencyBucket.DPD_30,
                 )
             )
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             session.add(
                 DelinquencyState(
                     account_id=account_id,
@@ -89,7 +94,7 @@ class TestSelectEntitiesForScreening:
                 )
             )
 
-        since = datetime.now(timezone.utc) - timedelta(hours=1)
+        since = datetime.now(UTC) - timedelta(hours=1)
         with session_scope() as session:
             selected = select_entities_for_screening(session, since)
         assert entity_id in selected
@@ -117,7 +122,7 @@ class TestSelectEntitiesForScreening:
                     current_state=DelinquencyBucket.CURED,
                 )
             )
-            old = datetime.now(timezone.utc) - timedelta(days=100)
+            old = datetime.now(UTC) - timedelta(days=100)
             session.add(
                 DelinquencyState(
                     account_id=account_id,
@@ -128,7 +133,7 @@ class TestSelectEntitiesForScreening:
                 )
             )
 
-        since = datetime.now(timezone.utc) - timedelta(hours=1)
+        since = datetime.now(UTC) - timedelta(hours=1)
         with session_scope() as session:
             selected = select_entities_for_screening(session, since)
         assert entity_id not in selected

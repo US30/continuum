@@ -20,7 +20,6 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
-    func,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column

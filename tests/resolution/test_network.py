@@ -22,7 +22,9 @@ pytestmark = pytest.mark.integration
 SINGLETON_RUN_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
 
-def _entity_with_record(session, full_name: str, address_line: str, postal_code: str, phone: str) -> uuid.UUID:
+def _entity_with_record(
+    session, full_name: str, address_line: str, postal_code: str, phone: str
+) -> uuid.UUID:
     record_id = uuid.uuid4()
     entity_id = uuid.uuid4()
     session.add(
@@ -38,9 +40,16 @@ def _entity_with_record(session, full_name: str, address_line: str, postal_code:
         )
     )
     session.add(
-        Entity(entity_id=entity_id, cluster_size=1, confidence=Decimal("1.0"), resolution_run_id=SINGLETON_RUN_ID)
+        Entity(
+            entity_id=entity_id,
+            cluster_size=1,
+            confidence=Decimal("1.0"),
+            resolution_run_id=SINGLETON_RUN_ID,
+        )
     )
-    session.add(EntityMember(entity_id=entity_id, record_id=record_id, match_probability=Decimal("1.0")))
+    session.add(
+        EntityMember(entity_id=entity_id, record_id=record_id, match_probability=Decimal("1.0"))
+    )
     return entity_id
 
 
@@ -64,8 +73,12 @@ class TestMaterialiseNetwork:
 
     def test_unrelated_entities_produce_no_edge(self) -> None:
         with session_scope() as session:
-            entity_1 = _entity_with_record(session, "Nobody Alike", "9 Oak Ave", "20002", "555-9001")
-            entity_2 = _entity_with_record(session, "Someone Else", "42 Pine Ln", "30003", "555-9002")
+            entity_1 = _entity_with_record(
+                session, "Nobody Alike", "9 Oak Ave", "20002", "555-9001"
+            )
+            entity_2 = _entity_with_record(
+                session, "Someone Else", "42 Pine Ln", "30003", "555-9002"
+            )
 
         with session_scope() as session:
             materialise_network(session)

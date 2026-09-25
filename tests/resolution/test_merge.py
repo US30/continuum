@@ -44,7 +44,9 @@ def _make_singleton(session, record_id: uuid.UUID) -> uuid.UUID:
             resolution_run_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
         )
     )
-    session.add(EntityMember(entity_id=entity_id, record_id=record_id, match_probability=Decimal("1.0")))
+    session.add(
+        EntityMember(entity_id=entity_id, record_id=record_id, match_probability=Decimal("1.0"))
+    )
     return entity_id
 
 
@@ -82,9 +84,13 @@ class TestApplyResolution:
             account = session.get(Account, account_id)
             assert account.entity_id == survivor_id
 
-            members = session.execute(
-                select(EntityMember.entity_id).where(EntityMember.record_id.in_(record_ids))
-            ).scalars().all()
+            members = (
+                session.execute(
+                    select(EntityMember.entity_id).where(EntityMember.record_id.in_(record_ids))
+                )
+                .scalars()
+                .all()
+            )
             assert set(members) == {survivor_id}
 
             assert session.get(Entity, entity_a) is None

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
+from itertools import pairwise
 
 from continuum.db.models.account import DelinquencyBucket
 from continuum.foundation.delinquency import (
@@ -44,7 +45,7 @@ def assert_scd2_shape(intervals: list[StateInterval]) -> None:
     """
     open_rows = [i for i in intervals if i.effective_to is None]
     assert len(open_rows) == 1
-    for earlier, later in zip(intervals, intervals[1:], strict=True):
+    for earlier, later in pairwise(intervals):
         assert earlier.effective_to == later.effective_from
 
 

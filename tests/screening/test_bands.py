@@ -13,7 +13,10 @@ class TestBandForScore:
         assert band_for_score(0.05, SETTINGS) == ScreeningBand.AUTO_REJECT
 
     def test_at_floor_is_auto_reject(self) -> None:
-        assert band_for_score(SETTINGS.screening_auto_reject_floor, SETTINGS) == ScreeningBand.AUTO_REJECT
+        assert (
+            band_for_score(SETTINGS.screening_auto_reject_floor, SETTINGS)
+            == ScreeningBand.AUTO_REJECT
+        )
 
     def test_just_above_floor_is_adjudicate(self) -> None:
         score = SETTINGS.screening_auto_reject_floor + 0.001
@@ -27,7 +30,10 @@ class TestBandForScore:
         assert band_for_score(score, SETTINGS) == ScreeningBand.ADJUDICATE
 
     def test_at_ceiling_is_auto_confirm(self) -> None:
-        assert band_for_score(SETTINGS.screening_auto_confirm_ceiling, SETTINGS) == ScreeningBand.AUTO_CONFIRM
+        assert (
+            band_for_score(SETTINGS.screening_auto_confirm_ceiling, SETTINGS)
+            == ScreeningBand.AUTO_CONFIRM
+        )
 
     def test_above_ceiling_is_auto_confirm(self) -> None:
         assert band_for_score(1.0, SETTINGS) == ScreeningBand.AUTO_CONFIRM

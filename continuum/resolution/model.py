@@ -36,7 +36,9 @@ NAME_COMPARISON = cl.JaroWinklerAtThresholds(
 # Exact-then-fuzzy on address (CLAUDE.md §8): an exact match on the raw address line is the
 # top level, a close Jaro-Winkler match (catches "Street" vs "St" abbreviation drift from
 # continuum.foundation.identity.address_variant) is the middle level, else "else".
-ADDRESS_COMPARISON = cl.JaroWinklerAtThresholds("address_line", score_threshold_or_thresholds=[0.95, 0.85])
+ADDRESS_COMPARISON = cl.JaroWinklerAtThresholds(
+    "address_line", score_threshold_or_thresholds=[0.95, 0.85]
+)
 
 # Exact on identifiers (CLAUDE.md §8) — national_id is either an exact match (after
 # continuum.foundation.identity.id_variant's punctuation-only drift, which blocking already

@@ -5,11 +5,10 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+# Import every model module so Base.metadata is fully populated for autogenerate.
+import continuum.db.models  # noqa: F401
 from continuum.config.settings import get_settings
 from continuum.db.base import Base
-
-# Import every model module so Base.metadata is fully populated for autogenerate.
-import continuum.db.models  # noqa: F401,E402
 
 config = context.config
 

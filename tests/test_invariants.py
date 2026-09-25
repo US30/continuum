@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from typing import ClassVar
 
 REPO_ROOT = Path(__file__).parent.parent
 CONTINUUM_ROOT = REPO_ROOT / "continuum"
@@ -45,7 +46,9 @@ def _importers_of(root: Path, target_prefixes: tuple[str, ...]) -> dict[Path, se
     hits: dict[Path, set[str]] = {}
     for path in _iter_python_files(root):
         imported = _imported_module_names(path)
-        matched = {m for m in imported if any(m == p or m.startswith(p + ".") for p in target_prefixes)}
+        matched = {
+            m for m in imported if any(m == p or m.startswith(p + ".") for p in target_prefixes)
+        }
         if matched:
             hits[path] = matched
     return hits
@@ -61,7 +64,7 @@ class TestGroundTruthLinkIsEvalOnly:
     # without reading ground_truth_link rows at runtime: the model definition itself, the
     # models package's re-export, the writer (collisions/build), and Alembic's env.py
     # (which imports the whole models package to populate autogenerate metadata).
-    ALLOWED_IMPORTER_FILES = {
+    ALLOWED_IMPORTER_FILES: ClassVar[set[Path]] = {
         CONTINUUM_ROOT / "db" / "models" / "eval.py",
         CONTINUUM_ROOT / "db" / "models" / "__init__.py",
         CONTINUUM_ROOT / "foundation" / "collisions.py",
@@ -109,5 +112,7 @@ class TestGuardIsSingleEgressPoint:
     def test_dispatch_module_only_imported_within_guard_package(self) -> None:
         hits = _importers_of(CONTINUUM_ROOT, ("continuum.guard.dispatch",))
         guard_package = CONTINUUM_ROOT / "guard"
-        disallowed = {path: mods for path, mods in hits.items() if guard_package not in path.parents}
+        disallowed = {
+            path: mods for path, mods in hits.items() if guard_package not in path.parents
+        }
         assert not disallowed, f"dispatch imported outside continuum/guard/: {disallowed}"

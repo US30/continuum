@@ -35,9 +35,7 @@ def select_entities_for_screening(session: Session, since: datetime) -> list[uui
     ).all()
 
     never_screened = session.scalars(
-        select(Entity.entity_id).where(
-            Entity.entity_id.not_in(select(ScreeningDecision.entity_id))
-        )
+        select(Entity.entity_id).where(Entity.entity_id.not_in(select(ScreeningDecision.entity_id)))
     ).all()
 
     return sorted(set(changed_entities) | set(never_screened))

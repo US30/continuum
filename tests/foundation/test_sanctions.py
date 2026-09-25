@@ -44,8 +44,7 @@ class TestParseTargetsSimpleCsv:
     def test_blank_birth_date_is_none(self, tmp_path: Path) -> None:
         csv_path = tmp_path / "one.csv"
         csv_path.write_text(
-            "id,schema,name,aliases,birth_date,countries,topics\n"
-            "x,Person,No Birth Date,,,,\n"
+            "id,schema,name,aliases,birth_date,countries,topics\nx,Person,No Birth Date,,,,\n"
         )
         listings = parse_targets_simple_csv(csv_path)
         assert listings[0].birth_date is None

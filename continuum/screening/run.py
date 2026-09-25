@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import uuid
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import typer
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -146,7 +146,7 @@ def _decide_one(
 
 def run(hours_back: int = 24) -> None:
     settings = get_settings()
-    since = datetime.now(timezone.utc) - timedelta(hours=hours_back)
+    since = datetime.now(UTC) - timedelta(hours=hours_back)
 
     outcome_counts: Counter[str] = Counter()
 
@@ -156,7 +156,9 @@ def run(hours_back: int = 24) -> None:
 
         snapshot_id = candidates_mod.current_snapshot_id(session)
         if snapshot_id is None:
-            typer.echo("no sanctions snapshot loaded — run `make data-build` first. Nothing to screen.")
+            typer.echo(
+                "no sanctions snapshot loaded — run `make data-build` first. Nothing to screen."
+            )
             return
 
         all_candidates = candidates_mod.generate_candidates(session, entity_ids)

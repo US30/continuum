@@ -57,8 +57,7 @@ def upgrade() -> None:
         unique=True,
     )
     op.execute(
-        "CREATE INDEX ix_party_record_name_trgm ON party_record "
-        "USING gin (full_name gin_trgm_ops)"
+        "CREATE INDEX ix_party_record_name_trgm ON party_record USING gin (full_name gin_trgm_ops)"
     )
 
     # -------------------------------------------------------------------- entity
@@ -387,13 +386,17 @@ def upgrade() -> None:
         sa.Column(
             "record_id_a",
             postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("party_record.record_id", name="fk_ground_truth_link_record_id_a_party_record"),
+            sa.ForeignKey(
+                "party_record.record_id", name="fk_ground_truth_link_record_id_a_party_record"
+            ),
             nullable=False,
         ),
         sa.Column(
             "record_id_b",
             postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("party_record.record_id", name="fk_ground_truth_link_record_id_b_party_record"),
+            sa.ForeignKey(
+                "party_record.record_id", name="fk_ground_truth_link_record_id_b_party_record"
+            ),
             nullable=False,
         ),
         sa.Column(

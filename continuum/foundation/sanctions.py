@@ -22,7 +22,9 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
-REQUIRED_COLUMNS = frozenset({"id", "schema", "name", "aliases", "birth_date", "countries", "topics"})
+REQUIRED_COLUMNS = frozenset(
+    {"id", "schema", "name", "aliases", "birth_date", "countries", "topics"}
+)
 
 
 @dataclass(frozen=True)

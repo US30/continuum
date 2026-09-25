@@ -81,9 +81,7 @@ def load_golden_set(path: Path = GOLDEN_SET_PATH) -> list[HardPair]:
 
 
 def _name_similarity(session: Session, name_a: str, name_b: str) -> float:
-    row = session.execute(
-        text("SELECT similarity(:a, :b)"), {"a": name_a, "b": name_b}
-    ).first()
+    row = session.execute(text("SELECT similarity(:a, :b)"), {"a": name_a, "b": name_b}).first()
     return float(row[0])
 
 
@@ -107,7 +105,9 @@ def compute_screening_metrics(pairs: list[HardPair]) -> tuple[ScreeningMetrics, 
                     fn += 1
                     missed.append(pair)
 
-    return ScreeningMetrics(true_positive=tp, false_negative=fn, flagged=flagged, total=len(pairs)), missed
+    return ScreeningMetrics(
+        true_positive=tp, false_negative=fn, flagged=flagged, total=len(pairs)
+    ), missed
 
 
 def _format(value: float | None) -> str:
@@ -129,7 +129,9 @@ def report() -> ScreeningMetrics:
     if missed:
         print("MISSED true matches (I5 violation — floor must be lowered):")
         for pair in missed:
-            print(f"  {pair.case_id} ({pair.case_type}): {pair.query_name!r} vs {pair.listing_name!r}")
+            print(
+                f"  {pair.case_id} ({pair.case_type}): {pair.query_name!r} vs {pair.listing_name!r}"
+            )
     print("")
     return metrics
 

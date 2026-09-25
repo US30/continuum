@@ -3,27 +3,28 @@
         resolve resolve-metrics screen screen-metrics
 
 COMPOSE = docker compose -f docker/docker-compose.yml
+RUN = conda run --no-capture-output -n continuum
 
 install:
-	uv sync --all-groups --all-extras
-	uv run pre-commit install
+	conda run --no-capture-output -n continuum pip install -e . --group dev
+	$(RUN) pre-commit install
 
 lint:
-	uv run ruff check .
-	uv run ruff format --check .
+	$(RUN) ruff check .
+	$(RUN) ruff format --check .
 
 format:
-	uv run ruff check --fix .
-	uv run ruff format .
+	$(RUN) ruff check --fix .
+	$(RUN) ruff format .
 
 typecheck:
-	uv run mypy continuum
+	$(RUN) mypy continuum
 
 test:
-	uv run pytest -m "not integration"
+	$(RUN) pytest -m "not integration"
 
 test-all:
-	uv run pytest
+	$(RUN) pytest
 
 # Phase 0 done-when (part 1): lint + typecheck + unit tests all pass.
 check: lint typecheck test
@@ -42,32 +43,32 @@ db-reset:
 
 # Phase 0 done-when (part 2): migrations apply cleanly to a fresh database.
 migrate:
-	uv run alembic upgrade head
+	$(RUN) alembic upgrade head
 
 revision:
-	uv run alembic revision --autogenerate -m "$(m)"
+	$(RUN) alembic revision --autogenerate -m "$(m)"
 
 # Phase 1 done-when: builds the full local dataset, re-runnable, prints row counts
 # and the planted ground_truth_link summary.
 data-build:
-	uv run python -m continuum.foundation.build
+	$(RUN) python -m continuum.foundation.build
 
 # Phase 2 done-when (part 1): blocking -> Splink -> stable clustering -> merge -> network.
 resolve:
-	uv run python -m continuum.resolution.run
+	$(RUN) python -m continuum.resolution.run
 
 # Phase 2 done-when (part 2): precision/recall/F1 against ground_truth_link, one command.
 resolve-metrics:
-	uv run python -m eval.resolution_metrics
+	$(RUN) python -m eval.resolution_metrics
 
 # Phase 3 done-when (part 1): select -> candidates -> band -> (auto-decide | adjudicate).
 screen:
-	uv run python -m continuum.screening.run
+	$(RUN) python -m continuum.screening.run
 
 # Phase 3 done-when (part 2): precision at 100% recall on the hard-name-pair set, plus the
 # proportion of candidates reaching the model.
 screen-metrics:
-	uv run python -m eval.screening_metrics
+	$(RUN) python -m eval.screening_metrics
 
 scan:
-	uv run gitleaks detect --no-git --redact --source .
+	$(RUN) gitleaks detect --no-git --redact --source .

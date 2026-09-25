@@ -3,14 +3,16 @@ collections, eval). All models import their table from here so Alembic autogener
 the full metadata.
 """
 
-from continuum.db.models import (  # noqa: F401
+from continuum.db.models import (
     account,
     collections,
     entity,
-    eval as eval_models,
     party,
     risk_file,
     screening,
+)
+from continuum.db.models import (
+    eval as eval_models,
 )
 
 __all__ = [

@@ -73,7 +73,9 @@ def apply_resolution(
         for absorbed_id in absorbed_ids:
             for table in ENTITY_FK_TABLES:
                 session.execute(
-                    update(table).where(table.entity_id == absorbed_id).values(entity_id=survivor_id)
+                    update(table)
+                    .where(table.entity_id == absorbed_id)
+                    .values(entity_id=survivor_id)
                 )
             absorbed_entity = session.get(Entity, absorbed_id)
             if absorbed_entity is not None:

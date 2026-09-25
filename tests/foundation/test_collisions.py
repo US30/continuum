@@ -35,7 +35,9 @@ class TestPlantedLinks:
         records, links = build_party_records(persons, SEED)
         person_by_record = {r.record_id: r.person_id for r in records}
 
-        hard_negatives = [l for l in links if l.collision_type == CollisionType.HARD_NEGATIVE]
+        hard_negatives = [
+            link for link in links if link.collision_type == CollisionType.HARD_NEGATIVE
+        ]
         assert hard_negatives, "expected at least one hard negative at this population size"
         for link in hard_negatives:
             assert person_by_record[link.record_id_a] != person_by_record[link.record_id_b]

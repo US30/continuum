@@ -10,6 +10,7 @@ from __future__ import annotations
 import random
 import uuid
 from datetime import date, datetime
+from itertools import pairwise
 
 from continuum.config.settings import Settings
 from continuum.db.models.account import DelinquencyBucket
@@ -63,7 +64,7 @@ class TestQuietHours:
 
 class TestSimulateContacts:
     def test_no_contact_outside_trigger_buckets(self) -> None:
-        states = [_interval(DelinquencyBucket.CURRENT, 1), _interval(DelinquencyBucket.CURED, 40)]
+        states = [_interval(DelinquencyBucket.CURRENT, 1), _interval(DelinquencyBucket.CURED, 20)]
         contacts = simulate_contacts(
             uuid.uuid4(), uuid.uuid4(), 10_000, states, SETTINGS, random.Random(1)
         )
@@ -84,7 +85,7 @@ class TestSimulateContacts:
             uuid.uuid4(), uuid.uuid4(), 1_000_000, states, SETTINGS, random.Random(3)
         )
         min_gap = max(1, 7 // max(SETTINGS.contact_policy_max_contacts_per_week, 1))
-        for earlier, later in zip(contacts, contacts[1:], strict=False):
+        for earlier, later in pairwise(contacts):
             assert (later.sent_at.date() - earlier.sent_at.date()).days >= min_gap
 
     def test_deterministic_given_same_seed(self) -> None:

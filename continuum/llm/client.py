@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import json
 import time
-from typing import TypeVar
 
 import litellm
 from pydantic import BaseModel, ValidationError
@@ -29,8 +28,6 @@ from continuum.config.settings import get_settings
 from continuum.telemetry.logging import get_logger
 
 logger = get_logger(__name__)
-
-T = TypeVar("T", bound=BaseModel)
 
 # Not tuned (CLAUDE.md §10) — a conservative starting point pending real latency/error-rate
 # data from a live LiteLLM gateway.
@@ -80,7 +77,7 @@ def _circuit_breaker_for(node: LogicalNode) -> CircuitBreaker:
     return _circuit_breakers.setdefault(node, CircuitBreaker())
 
 
-def complete_structured(
+def complete_structured[T: BaseModel](
     node: LogicalNode,
     system_prompt: str,
     user_prompt: str,

@@ -77,7 +77,9 @@ def compute_resolution_metrics(session: Session) -> ResolutionMetrics:
             fp += same_entity
             tn += not same_entity
 
-    return ResolutionMetrics(true_positive=tp, false_negative=fn, false_positive=fp, true_negative=tn)
+    return ResolutionMetrics(
+        true_positive=tp, false_negative=fn, false_positive=fp, true_negative=tn
+    )
 
 
 def _format(value: float | None) -> str:
@@ -90,8 +92,10 @@ def report() -> ResolutionMetrics:
 
     print("")
     print("=== CONTINUUM resolution metrics (vs. ground_truth_link) ===")
-    print(f"TP={metrics.true_positive}  FN={metrics.false_negative}  "
-          f"FP={metrics.false_positive}  TN={metrics.true_negative}")
+    print(
+        f"TP={metrics.true_positive}  FN={metrics.false_negative}  "
+        f"FP={metrics.false_positive}  TN={metrics.true_negative}"
+    )
     print(f"precision: {_format(metrics.precision)}")
     print(f"recall:    {_format(metrics.recall)}")
     print(f"F1:        {_format(metrics.f1)}")

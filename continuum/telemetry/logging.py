@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from collections.abc import MutableMapping
 from contextvars import ContextVar
+from typing import Any
 
 import structlog
 
@@ -24,8 +26,8 @@ def get_correlation_id() -> str | None:
 
 
 def _add_correlation_id(
-    logger: object, method_name: str, event_dict: dict[str, object]
-) -> dict[str, object]:
+    logger: Any, method_name: str, event_dict: MutableMapping[str, Any]
+) -> MutableMapping[str, Any]:
     cid = _correlation_id.get()
     if cid is not None:
         event_dict["correlation_id"] = cid
@@ -48,7 +50,9 @@ def configure_logging(log_level: str = "INFO") -> None:
             structlog.processors.StackInfoRenderer(),
             structlog.processors.JSONRenderer(),
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(logging.getLevelName(log_level.upper())),
+        wrapper_class=structlog.make_filtering_bound_logger(
+            logging.getLevelName(log_level.upper())
+        ),
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(),
         cache_logger_on_first_use=True,
@@ -56,4 +60,5 @@ def configure_logging(log_level: str = "INFO") -> None:
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
-    return structlog.get_logger(name)
+    logger: structlog.stdlib.BoundLogger = structlog.get_logger(name)
+    return logger
