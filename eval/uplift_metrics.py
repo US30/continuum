@@ -215,14 +215,18 @@ def print_report(report: UpliftReport) -> None:
     typer.echo("")
 
 
-def report() -> UpliftReport:
+def compute() -> UpliftReport:
     settings = get_settings()
     artifact = load_artifact()
     _, split, _ = train_from_database(settings.data_as_of_date)  # same deterministic split
     model = artifact["model"]
     test = split.test
     scores = model.score(test)  # type: ignore[attr-defined]
-    out = evaluate_policies(test, scores, load_truth())
+    return evaluate_policies(test, scores, load_truth())
+
+
+def report() -> UpliftReport:
+    out = compute()
     print_report(out)
     return out
 

@@ -149,3 +149,24 @@ class TestOnlyDispatchRecordsRuntimeContacts:
             and not any(d in path.parents for d in allowed_dirs)
         ]
         assert not offenders, f"runtime contacts written outside the guard: {offenders}"
+
+
+class TestIdentityAndNetworkTruthAreEvalOnly:
+    """CLAUDE.md I4: account_truth / network_truth say which accounts and which contact
+    points really belong together. Runtime code that read them would be reading the answer."""
+
+    def test_no_runtime_module_mentions_them(self) -> None:
+        allowed = {
+            CONTINUUM_ROOT / "foundation" / "eval_truth.py",
+            CONTINUUM_ROOT / "foundation" / "build.py",  # passes the output paths to the writer
+        }
+        offenders = [
+            path
+            for path in _iter_python_files(CONTINUUM_ROOT)
+            if path not in allowed
+            and any(
+                name in path.read_text(encoding="utf-8")
+                for name in ("account_truth", "network_truth", "record_truth")
+            )
+        ]
+        assert not offenders, f"runtime code touches eval-only truth: {offenders}"

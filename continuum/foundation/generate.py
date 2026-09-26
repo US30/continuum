@@ -65,6 +65,20 @@ PRIOR_LATE_INTERCEPT = -1.2
 PRIOR_LATE_DISCIPLINE = -1.0
 PRIOR_LATE_MAX_DAYS = 12  # stays inside the 30-DPD grace, so it never becomes delinquency
 
+# --- Shared-contact structures (Phase 7: what an account-centric view cannot see) ---
+# Households: 2-4 people sharing an address (benign; some also share a landline). Fraud rings:
+# 4-6 distinct people sharing a phone AND an address, all going delinquent within a short
+# window and almost never curing (a synthetic-identity / bust-out pattern). Fractions are of
+# persons; consecutive persons form a group, so grouping is deterministic given the seed.
+HOUSEHOLD_START_PROBABILITY = 0.022  # ~6-7% of persons end up in a household
+HOUSEHOLD_SIZES = (2, 3, 4)
+RING_START_PROBABILITY = 0.006  # ~3% of persons (~20 rings per 5,000) end up in a ring
+RING_SIZES = (4, 5, 6)
+RING_ACCOUNTS_PER_PERSON_WEIGHTS = (0.6, 0.4)  # 1 or 2 accounts
+RING_ENTER_EPISODE_PROBABILITY = 0.95
+RING_CURE_PROBABILITY = 0.05  # regardless of contact: fraud does not respond to outreach
+RING_TROUBLE_AGE_SPREAD_DAYS = 10  # members go delinquent within ~3 weeks of each other
+
 DECISION_LAG_DAYS = 30  # first reaches 30 DPD this many days after the unpaid due date
 CURE_MIN_DAYS = 3
 LATE_CURE_MIN_DAYS = causal.CURE_WINDOW_DAYS + 1
@@ -98,6 +112,9 @@ class SyntheticAccount:
 class SyntheticPerson:
     person_id: uuid.UUID
     accounts: list[SyntheticAccount]
+    #: "household" | "ring" | None. Eval-only ground truth; see continuum.foundation.eval_truth.
+    group_type: str | None = None
+    group_id: str | None = None
 
 
 def _monthly_due_dates(origination: date, as_of: date) -> list[date]:
@@ -127,17 +144,29 @@ def _prior_paid_date(due: date, discipline: float, as_of: date, rng: random.Rand
     return due
 
 
-def _generate_account(discipline: float, rng: random.Random) -> SyntheticAccount:
+def _generate_account(
+    discipline: float, rng: random.Random, ring_anchor_age: int | None = None
+) -> SyntheticAccount:
     settings = get_settings()
     exposure = Decimal(str(round(rng.lognormvariate(EXPOSURE_LOG_MU, EXPOSURE_LOG_SIGMA), 2)))
     z_exposure = (math.log(float(exposure)) - EXPOSURE_LOG_MU) / EXPOSURE_LOG_SIGMA
-    has_episode = rng.random() < causal.sigmoid(
-        ENTER_EPISODE_INTERCEPT + ENTER_EPISODE_DISCIPLINE * discipline
-    )
+    if ring_anchor_age is not None:
+        has_episode = rng.random() < RING_ENTER_EPISODE_PROBABILITY
+    else:
+        has_episode = rng.random() < causal.sigmoid(
+            ENTER_EPISODE_INTERCEPT + ENTER_EPISODE_DISCIPLINE * discipline
+        )
 
     episode_meta: tuple[date, int] | None = None
     if has_episode:
-        due = AS_OF_DATE - timedelta(days=rng.randint(TROUBLE_AGE_MIN_DAYS, TROUBLE_AGE_MAX_DAYS))
+        if ring_anchor_age is None:
+            age = rng.randint(TROUBLE_AGE_MIN_DAYS, TROUBLE_AGE_MAX_DAYS)
+        else:
+            age = ring_anchor_age + rng.randint(
+                -RING_TROUBLE_AGE_SPREAD_DAYS, RING_TROUBLE_AGE_SPREAD_DAYS
+            )
+            age = min(max(age, TROUBLE_AGE_MIN_DAYS), TROUBLE_AGE_MAX_DAYS)
+        due = AS_OF_DATE - timedelta(days=age)
         trouble_due = due.replace(day=min(due.day, 28))
         months_before = rng.randint(MIN_MONTHS_BEFORE_TROUBLE, MAX_MONTHS_BEFORE_TROUBLE)
         origination = _shift_months_back(trouble_due, months_before)
@@ -170,7 +199,10 @@ def _generate_account(discipline: float, rng: random.Random) -> SyntheticAccount
     decision_date = trouble_due + timedelta(days=DECISION_LAG_DAYS)
     z_months = (months_before - MONTHS_ON_BOOK_MEAN) / MONTHS_ON_BOOK_SD
 
-    p_control, p_treated = causal.cure_probabilities(discipline, z_exposure, z_months)
+    if ring_anchor_age is None:
+        p_control, p_treated = causal.cure_probabilities(discipline, z_exposure, z_months)
+    else:
+        p_control = p_treated = RING_CURE_PROBABILITY
     treated = rng.random() < contact_probability(float(exposure), settings)
     cured_60 = rng.random() < (p_treated if treated else p_control)
 
@@ -224,15 +256,46 @@ def _generate_account(discipline: float, rng: random.Random) -> SyntheticAccount
     )
 
 
+def _assign_groups(n_persons: int, rng: random.Random) -> list[tuple[str | None, str | None]]:
+    """(group_type, group_id) per person, consecutive persons forming each group."""
+    groups: list[tuple[str | None, str | None]] = []
+    counter = 0
+    while len(groups) < n_persons:
+        roll = rng.random()
+        if roll < RING_START_PROBABILITY:
+            kind, size = "ring", rng.choice(RING_SIZES)
+        elif roll < RING_START_PROBABILITY + HOUSEHOLD_START_PROBABILITY:
+            kind, size = "household", rng.choice(HOUSEHOLD_SIZES)
+        else:
+            groups.append((None, None))
+            continue
+        counter += 1
+        groups.extend([(kind, f"{kind}-{counter:05d}")] * size)
+    return groups[:n_persons]
+
+
 def generate_population(n_persons: int, seed: int) -> list[SyntheticPerson]:
     """Deterministic given (n_persons, seed) — required for CLAUDE.md I6 idempotency."""
     rng = random.Random(seed)
+    group_of = _assign_groups(n_persons, random.Random(seed + 7))
+    ring_anchor: dict[str, int] = {}
 
     persons: list[SyntheticPerson] = []
-    for _ in range(n_persons):
+    for group_type, group_id in group_of:
         person_id = uuid.UUID(int=rng.getrandbits(128))
         discipline = rng.gauss(0.0, 1.0)  # latent, never persisted
-        n_accounts = rng.choices([1, 2, 3], weights=[0.7, 0.25, 0.05])[0]
-        accounts = [_generate_account(discipline, rng) for _ in range(n_accounts)]
-        persons.append(SyntheticPerson(person_id=person_id, accounts=accounts))
+        anchor: int | None = None
+        if group_type == "ring" and group_id is not None:
+            if group_id not in ring_anchor:
+                ring_anchor[group_id] = rng.randint(70, 250)
+            anchor = ring_anchor[group_id]
+            n_accounts = rng.choices([1, 2], weights=RING_ACCOUNTS_PER_PERSON_WEIGHTS)[0]
+        else:
+            n_accounts = rng.choices([1, 2, 3], weights=[0.7, 0.25, 0.05])[0]
+        accounts = [_generate_account(discipline, rng, anchor) for _ in range(n_accounts)]
+        persons.append(
+            SyntheticPerson(
+                person_id=person_id, accounts=accounts, group_type=group_type, group_id=group_id
+            )
+        )
     return persons

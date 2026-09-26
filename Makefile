@@ -1,6 +1,6 @@
 .PHONY: install lint format typecheck test test-all check \
         db-up db-down db-reset migrate revision data-build scan \
-        resolve resolve-metrics screen screen-metrics screen-metrics-llm train uplift-metrics worker cases injection
+        resolve resolve-metrics screen screen-metrics screen-metrics-llm train uplift-metrics worker cases injection guard-golden network-metrics audit metrics metrics-check metrics-baseline ci-metrics
 
 COMPOSE = docker compose -f docker/docker-compose.yml
 RUN = conda run --no-capture-output -n continuum
@@ -96,3 +96,31 @@ cases:
 # Phase 6 done-when: no prompt injection in the suite succeeds. Offline; exits 1 on any success.
 injection:
 	$(RUN) python -m eval.injection_suite
+
+# Phase 7: golden sets, audit stream, Metric 3, one report, and the CI regression gate.
+guard-golden:
+	$(RUN) python -m eval.guard_golden
+
+network-metrics:
+	$(RUN) python -m eval.network_value
+
+audit:
+	$(RUN) python -m eval.audit
+
+metrics:
+	$(RUN) python -m eval.metrics
+
+metrics-check:
+	$(RUN) python -m eval.metrics --check
+
+# Refresh eval/baselines.json from the CURRENT database. Explicit, reviewed, never automatic.
+metrics-baseline:
+	$(RUN) python -m eval.metrics --write-baseline
+
+# What CI runs: a deterministic 2,000-person dataset end to end, then the gate.
+ci-metrics:
+	$(RUN) python -m continuum.foundation.build --n-persons 2000
+	$(RUN) python -m continuum.resolution.run
+	LLM_ENABLED=false $(RUN) python -m continuum.screening.run --no-adjudicate
+	$(RUN) python -m continuum.scoring.train
+	$(RUN) python -m eval.metrics --check

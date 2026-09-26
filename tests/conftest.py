@@ -57,5 +57,8 @@ def _isolate_build_outputs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     monkeypatch.setattr(build, "SANCTIONS_CSV", tmp_path / "targets.simple.csv")
     monkeypatch.setattr(build, "SANCTIONS_PLANTED_CSV", tmp_path / "sanctions_planted.csv")
     monkeypatch.setattr(build, "TRUE_UPLIFT_CSV", tmp_path / "true_uplift.csv")
+    monkeypatch.setattr(build, "ACCOUNT_TRUTH_CSV", tmp_path / "account_truth.csv")
+    monkeypatch.setattr(build, "NETWORK_TRUTH_CSV", tmp_path / "network_truth.csv")
+    monkeypatch.setattr(build, "RECORD_TRUTH_CSV", tmp_path / "record_truth.csv")
     # No sanctions file -> the loader skips the snapshot instead of generating one.
     monkeypatch.setattr(build.synthetic_sanctions, "write_synthetic_sanctions", lambda *a, **k: 0)

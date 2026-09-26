@@ -33,6 +33,11 @@ from continuum.foundation.identity import name_variant
 HEADER = ["id", "schema", "name", "aliases", "birth_date", "countries", "topics"]
 
 PLANTED_FRACTION = 0.01  # of canonical records; at least MIN_PLANTED
+# Share of planted hits whose listing contains NO exact copy of the customer's name — only
+# variants (nickname, transposed order, doubled letter). Without these every planted hit is
+# found trivially by an exact alias and the screening floor is never really tested; with them
+# the audit (eval/audit.py) can measure a genuine false-clear rate.
+HARD_PLANTED_FRACTION = 0.6
 MIN_PLANTED = 3
 HARD_DECOYS_PER_PLANTED = 2
 DECOYS_PER_PLANTED = 8
@@ -47,6 +52,15 @@ class _Row:
     birth_date: date | None
     topics: str
     planted_record_id: str | None = None
+
+
+def _different_variant(name: str, rng: random.Random) -> str:
+    """A name variant that is not the name itself (a few attempts; short names may not have one)."""
+    for _ in range(8):
+        variant = name_variant(name, rng)
+        if variant != name:
+            return variant
+    return name
 
 
 def build_rows(drafts: list[PartyRecordDraft], seed: int) -> list[_Row]:
@@ -70,10 +84,16 @@ def build_rows(drafts: list[PartyRecordDraft], seed: int) -> list[_Row]:
             dob = draft.identity.date_of_birth + timedelta(days=rng.choice([-1, 1, 30, -30]))
         else:
             dob = None
+        if rng.random() < HARD_PLANTED_FRACTION:
+            listing_name = _different_variant(name, rng)
+            aliases = sorted({_different_variant(name, rng)} - {listing_name})
+        else:
+            listing_name = name_variant(name, rng)
+            aliases = sorted({name, name_variant(name, rng)})
         rows.append(
             _Row(
-                name=name_variant(name, rng),
-                aliases=sorted({name, name_variant(name, rng)}),
+                name=listing_name,
+                aliases=aliases,
                 birth_date=dob,
                 topics=rng.choice(TOPICS),
                 planted_record_id=str(draft.record_id),

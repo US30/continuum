@@ -44,7 +44,7 @@ STREET_ABBREVIATIONS: dict[str, str] = {
 class SyntheticIdentity:
     full_name: str
     date_of_birth: date
-    national_id: str
+    national_id: str | None
     address_line: str
     postal_code: str
     phone: str
@@ -101,9 +101,9 @@ def phone_variant(phone: str, rng: random.Random) -> str:
     return f"{digits[:3]}-{digits[3:6]}-{digits[6:]}"
 
 
-def id_variant(national_id: str, rng: random.Random) -> str:
+def id_variant(national_id: str | None, rng: random.Random) -> str | None:
     """Strip formatting from a national id, e.g. "123-45-6789" -> "123456789"."""
-    return national_id.replace("-", "")
+    return None if national_id is None else national_id.replace("-", "")
 
 
 def messy_duplicate(identity: SyntheticIdentity, rng: random.Random) -> SyntheticIdentity:
@@ -128,4 +128,29 @@ def messy_duplicate(identity: SyntheticIdentity, rng: random.Random) -> Syntheti
         postal_code=identity.postal_code,
         phone=phone_variant(identity.phone, rng) if rng.random() < 0.4 else identity.phone,
         email=identity.email,
+    )
+
+
+def reapplication_identity(identity: SyntheticIdentity, rng: random.Random) -> SyntheticIdentity:
+    """The identity a person presents when they apply for another loan later: mostly the
+    same details with the usual messiness, but the national id is often formatted differently
+    or left off the form — exactly what defeats an exact-id match in an account-centric system
+    while a probabilistic resolver still links it (continuum.foundation.build; Metric 3).
+    """
+    base = messy_duplicate(identity, rng)
+    roll = rng.random()
+    if roll < 0.40:
+        national_id: str | None = None  # left blank
+    elif roll < 0.80:
+        national_id = id_variant(identity.national_id, rng)  # 123456789 vs 123-45-6789
+    else:
+        national_id = identity.national_id
+    return SyntheticIdentity(
+        full_name=base.full_name,
+        date_of_birth=base.date_of_birth,
+        national_id=national_id,
+        address_line=base.address_line,
+        postal_code=base.postal_code,
+        phone=base.phone,
+        email=base.email,
     )

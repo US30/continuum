@@ -17,7 +17,7 @@ jobs:
           version: "0.9.8"
 
       - name: Sync dependencies
-        run: uv sync --all-groups --all-extras
+        run: uv sync --frozen --all-groups --all-extras
 
       - name: Lint (ruff check)
         run: uv run ruff check .
@@ -80,7 +80,7 @@ jobs:
           version: "0.9.8"
 
       - name: Sync dependencies
-        run: uv sync --all-groups --all-extras
+        run: uv sync --frozen --all-groups --all-extras
 
       - name: Enable required Postgres extensions
         run: |
@@ -93,9 +93,65 @@ jobs:
       - name: Integration tests
         run: uv run pytest -m integration
 
-  # Reserved for Phase 7: CI fails on regression in any of the three headline metrics
-  # (screening precision at 100% recall, incremental recovery vs. baseline, entity-view
-  # lift share). Not implemented until the evaluation harness exists.
-  # metrics-gate:
-  #   runs-on: ubuntu-latest
-  #   steps: []
+  # Phase 7: CI fails on regression in any of the three headline metrics (CLAUDE.md §8/§9).
+  # Deterministic 2,000-person dataset -> resolve -> screen (no LLM) -> train -> compare with
+  # eval/baselines.json. Refresh the baseline only via `make metrics-baseline`, reviewed in a PR.
+  metrics-gate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: continuum
+          POSTGRES_USER: continuum
+          POSTGRES_PASSWORD: continuum_ci
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U continuum -d continuum"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ENVIRONMENT: ci
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5433
+      POSTGRES_DB: continuum
+      POSTGRES_USER: continuum
+      POSTGRES_PASSWORD: continuum_ci
+      LLM_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.9.8"
+
+      - name: Sync dependencies (locked)
+        run: uv sync --frozen --all-groups --all-extras
+
+      - name: Run migrations
+        run: uv run alembic upgrade head
+
+      - name: Build the deterministic dataset
+        run: uv run python -m continuum.foundation.build --n-persons 2000
+
+      - name: Resolve entities
+        run: uv run python -m continuum.resolution.run
+
+      - name: Screen (deterministic layer only)
+        run: uv run python -m continuum.screening.run --no-adjudicate
+
+      - name: Train uplift model
+        run: uv run python -m continuum.scoring.train
+
+      - name: Metric regression gate
+        run: uv run python -m eval.metrics --check
+
+      - name: Upload metrics report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: metrics-report
+          path: data/metrics_report.json

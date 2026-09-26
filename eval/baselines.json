@@ -1,0 +1,48 @@
+{
+  "config": {
+    "data_seed": 20260101,
+    "as_of": "2026-01-01",
+    "n_accounts": 2718
+  },
+  "values": {
+    "config": {
+      "data_seed": 20260101,
+      "as_of": "2026-01-01",
+      "n_accounts": 2718
+    },
+    "metric1_screening": {
+      "labelled_pairs": 18,
+      "recall_deterministic_layer": 1.0,
+      "missed_true_matches": [],
+      "proportion_reaching_model": 0.7777777777777778,
+      "planted_hits_total": 23,
+      "planted_hits_false_cleared": 0
+    },
+    "metric2_uplift": {
+      "n_test_episodes": 317,
+      "incremental_recovery_oracle": 11431.403491878387,
+      "ci_low": 5800.804533128492,
+      "ci_high": 17114.80817323471,
+      "vs_rules_top_k": -2788.092067959995,
+      "spearman_tau": 0.19255438256166146
+    },
+    "metric3_network": {
+      "n_cases": 294,
+      "validated_share": 0.09863945578231292,
+      "raw_share": 0.1054421768707483,
+      "ring_cases": 13,
+      "ring_recall": 1.0,
+      "non_ring_flag_rate": 0.03202846975088968
+    },
+    "supporting": {
+      "resolution_precision": 1.0,
+      "resolution_recall": 0.9547445255474453,
+      "resolution_f1": 0.9768483943241224,
+      "audit_suspect_rate": 0.095,
+      "injection_attacks": 47,
+      "injection_attacks_succeeded": 0,
+      "guard_golden_cases": 30,
+      "guard_golden_wrong": 0
+    }
+  }
+}

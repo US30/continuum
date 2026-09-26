@@ -27,6 +27,7 @@ from continuum.foundation.identity import (
     SyntheticIdentity,
     generate_canonical_identity,
     messy_duplicate,
+    reapplication_identity,
 )
 
 # Fraction of persons who get 2-4 duplicate party_records (SAME_PERSON collisions), and
@@ -36,6 +37,14 @@ from continuum.foundation.identity import (
 MULTI_RECORD_RATE = 0.12
 HARD_NEGATIVE_RATE = 0.03
 
+# Probability that each additional account a person opens is applied for under a *new*
+# identity record (a re-application with slightly different details) rather than the
+# original one. This is what makes one person look like several customers to a system that
+# links accounts by exact identifiers (Phase 7, Metric 3).
+REAPPLY_RATE = 0.5
+# In a household, the chance a member shares the household landline as well as the address.
+HOUSEHOLD_SHARED_PHONE_RATE = 0.3
+
 
 @dataclass(frozen=True)
 class PartyRecordDraft:
@@ -44,6 +53,8 @@ class PartyRecordDraft:
     source_system: str
     source_record_id: str
     identity: SyntheticIdentity
+    #: Accounts opened under this identity record (empty for pure duplicates/intake records).
+    account_ids: tuple[uuid.UUID, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -66,9 +77,35 @@ def build_party_records(
     records: list[PartyRecordDraft] = []
     links: list[PlantedLink] = []
 
+    shared_by_group: dict[str, SyntheticIdentity] = {}
+
     for person in persons:
-        canonical_identity = generate_canonical_identity(fake, rng)
+        canonical_identity = _with_group_contact(
+            generate_canonical_identity(fake, rng), person, shared_by_group, rng
+        )
         canonical_record_id = uuid.UUID(int=rng.getrandbits(128))
+        canonical_accounts = [person.accounts[0].account_id] if person.accounts else []
+        person_record_ids = [canonical_record_id]
+        extra_records: list[PartyRecordDraft] = []
+
+        # Later accounts: sometimes opened under a fresh, messier identity record.
+        for k, account in enumerate(person.accounts[1:], start=1):
+            if rng.random() < REAPPLY_RATE:
+                app_id = uuid.UUID(int=rng.getrandbits(128))
+                extra_records.append(
+                    PartyRecordDraft(
+                        record_id=app_id,
+                        person_id=person.person_id,
+                        source_system="loan_origination",
+                        source_record_id=f"{person.person_id}-app{k}",
+                        identity=reapplication_identity(canonical_identity, rng),
+                        account_ids=(account.account_id,),
+                    )
+                )
+                person_record_ids.append(app_id)
+            else:
+                canonical_accounts.append(account.account_id)
+
         records.append(
             PartyRecordDraft(
                 record_id=canonical_record_id,
@@ -76,10 +113,11 @@ def build_party_records(
                 source_system="loan_origination",
                 source_record_id=str(person.person_id),
                 identity=canonical_identity,
+                account_ids=tuple(canonical_accounts),
             )
         )
+        records.extend(extra_records)
 
-        person_record_ids = [canonical_record_id]
         n_duplicates = 0
         if rng.random() < MULTI_RECORD_RATE:
             n_duplicates = rng.choices([1, 2, 3], weights=[0.6, 0.3, 0.1])[0]
@@ -102,6 +140,32 @@ def build_party_records(
 
     _plant_hard_negatives(records, links, rng)
     return records, links
+
+
+def _with_group_contact(
+    identity: SyntheticIdentity,
+    person: SyntheticPerson,
+    shared_by_group: dict[str, SyntheticIdentity],
+    rng: random.Random,
+) -> SyntheticIdentity:
+    """Give household/ring members the group's shared contact points. The first member of a
+    group defines them; later members inherit the address (both group types) and, for rings,
+    the phone too (households share a landline only sometimes)."""
+    if person.group_id is None:
+        return identity
+    anchor = shared_by_group.setdefault(person.group_id, identity)
+    if anchor is identity:
+        return identity
+    share_phone = person.group_type == "ring" or rng.random() < HOUSEHOLD_SHARED_PHONE_RATE
+    return SyntheticIdentity(
+        full_name=identity.full_name,
+        date_of_birth=identity.date_of_birth,
+        national_id=identity.national_id,
+        address_line=anchor.address_line,
+        postal_code=anchor.postal_code,
+        phone=anchor.phone if share_phone else identity.phone,
+        email=identity.email,
+    )
 
 
 def _plant_hard_negatives(

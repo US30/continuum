@@ -36,7 +36,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import typer
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -52,6 +52,7 @@ from continuum.foundation import (
     collisions,
     contact_policy,
     delinquency,
+    eval_truth,
     generate,
     sanctions,
     synthetic_sanctions,
@@ -66,6 +67,9 @@ DEFAULT_N_PERSONS = 5_000
 SANCTIONS_CSV = Path("data") / "targets.simple.csv"
 SANCTIONS_PLANTED_CSV = Path("data") / "sanctions_planted.csv"  # eval-only truth (I4)
 TRUE_UPLIFT_CSV = Path("data") / "true_uplift.csv"  # eval-only truth (I4)
+ACCOUNT_TRUTH_CSV = Path("data") / "account_truth.csv"  # eval-only truth (I4)
+NETWORK_TRUTH_CSV = Path("data") / "network_truth.csv"  # eval-only truth (I4)
+RECORD_TRUTH_CSV = Path("data") / "record_truth.csv"  # eval-only truth (I4)
 
 # Fixed sentinel for the Phase-1 singleton entities described above — never used once
 # Phase 2's real resolution_run_id values exist, kept constant so re-runs are idempotent.
@@ -125,14 +129,30 @@ def _load_singletons(
     session: Session, drafts: list[collisions.PartyRecordDraft]
 ) -> dict[uuid.UUID, uuid.UUID]:
     """One singleton Entity + one EntityMember row per party_record. Returns
-    {person_id: canonical_entity_id} — the loan_origination record's entity id for each
-    person — for the account/contact loaders below, which is the only person-level fact
-    this module is allowed to know at write time (see the module docstring).
+    {account_id: entity_id} — each account belongs to the singleton of the identity record it
+    was originated under. That mapping is the only person-level fact this module is allowed to
+    use at write time (see the module docstring): a person whose later account was opened under
+    a fresh identity record therefore starts as two separate entities until Phase 2 resolves them.
     """
-    canonical_entity_by_person: dict[uuid.UUID, uuid.UUID] = {}
+    entity_by_account: dict[uuid.UUID, uuid.UUID] = {}
+    # Records that already belong to an entity (e.g. a resolved cluster from a previous
+    # `make resolve`) must not get a second, singleton membership: re-running the build after
+    # resolution would otherwise resurrect absorbed entities and duplicate every merged record
+    # (CLAUDE.md I6).
+    already_members = set(
+        session.scalars(
+            select(EntityMember.record_id).where(
+                EntityMember.record_id.in_([d.record_id for d in drafts])
+            )
+        )
+    )
 
     for draft in drafts:
         entity_id = _singleton_entity_id(draft.record_id)
+        if draft.record_id in already_members:
+            for account_id in draft.account_ids:
+                entity_by_account[account_id] = entity_id  # only used for brand-new accounts
+            continue
 
         entity_stmt = pg_insert(Entity).values(
             entity_id=entity_id,
@@ -151,21 +171,20 @@ def _load_singletons(
         member_stmt = member_stmt.on_conflict_do_nothing(index_elements=["entity_id", "record_id"])
         session.execute(member_stmt)
 
-        if draft.source_system == "loan_origination":
-            canonical_entity_by_person[draft.person_id] = entity_id
+        for account_id in draft.account_ids:
+            entity_by_account[account_id] = entity_id
 
-    return canonical_entity_by_person
+    return entity_by_account
 
 
 def _load_accounts(
     session: Session,
     persons: list[generate.SyntheticPerson],
-    canonical_entity_by_person: dict[uuid.UUID, uuid.UUID],
+    entity_by_account: dict[uuid.UUID, uuid.UUID],
 ) -> None:
     for person in persons:
-        entity_id = canonical_entity_by_person[person.person_id]
-
         for account in person.accounts:
+            entity_id = entity_by_account[account.account_id]
             states = delinquency.derive_delinquency_states(
                 account.payments, account.origination_date, generate.AS_OF_DATE
             )
@@ -224,7 +243,7 @@ def _load_accounts(
 def _load_contact_history(
     session: Session,
     persons: list[generate.SyntheticPerson],
-    canonical_entity_by_person: dict[uuid.UUID, uuid.UUID],
+    entity_by_account: dict[uuid.UUID, uuid.UUID],
     seed: int,
 ) -> Counter[str]:
     settings = get_settings()
@@ -232,8 +251,8 @@ def _load_contact_history(
     channel_counts: Counter[str] = Counter()
 
     for person in persons:
-        entity_id = canonical_entity_by_person[person.person_id]
         for account in person.accounts:
+            entity_id = entity_by_account[account.account_id]
             episode = account.episode
             if episode is None or not episode.treated:
                 continue
@@ -337,14 +356,15 @@ def build(
         logger.info("data_build.synthetic_sanctions", n_listings=n_synth, path=str(SANCTIONS_CSV))
 
     true_uplift.write_true_uplift(persons, TRUE_UPLIFT_CSV)
+    eval_truth.write_eval_truth(
+        persons, drafts, ACCOUNT_TRUTH_CSV, NETWORK_TRUTH_CSV, RECORD_TRUTH_CSV
+    )
 
     with session_scope() as session:
         _load_party_records_and_links(session, drafts, links)
-        canonical_entity_by_person = _load_singletons(session, drafts)
-        _load_accounts(session, persons, canonical_entity_by_person)
-        channel_counts = _load_contact_history(
-            session, persons, canonical_entity_by_person, effective_seed
-        )
+        entity_by_account = _load_singletons(session, drafts)
+        _load_accounts(session, persons, entity_by_account)
+        channel_counts = _load_contact_history(session, persons, entity_by_account, effective_seed)
         sanctions_result = _load_sanctions_snapshot(session, SANCTIONS_CSV)
 
     _print_summary(persons, drafts, links, channel_counts, sanctions_result)
