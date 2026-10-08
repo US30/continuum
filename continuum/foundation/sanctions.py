@@ -17,6 +17,7 @@ design — a snapshot's whole purpose is to record *when* a given listing set wa
 from __future__ import annotations
 
 import csv
+import hashlib
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -72,5 +73,14 @@ def parse_targets_simple_csv(path: Path) -> list[SanctionsListingDraft]:
         return listings
 
 
-def new_snapshot_id() -> uuid.UUID:
-    return uuid.uuid4()
+SNAPSHOT_ID_NAMESPACE = uuid.UUID("00000000-0000-0000-0000-0000000000a5")
+
+
+def snapshot_id_for(path: Path) -> uuid.UUID:
+    """Snapshot id derived from the listing file's bytes (CLAUDE.md I6: natural identifiers).
+
+    Screening decisions are keyed on (entity, snapshot, listing). Reloading an unchanged file
+    must therefore give the same snapshot id, or every existing decision would stop counting
+    and every entity would fall back to "screening unresolved". A changed file gives a new
+    id, which is exactly when earlier decisions should stop counting."""
+    return uuid.uuid5(SNAPSHOT_ID_NAMESPACE, hashlib.sha256(path.read_bytes()).hexdigest())

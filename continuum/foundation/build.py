@@ -294,7 +294,7 @@ def _load_sanctions_snapshot(session: Session, csv_path: Path) -> tuple[uuid.UUI
         return None
 
     listings = sanctions.parse_targets_simple_csv(csv_path)
-    snapshot_id = sanctions.new_snapshot_id()
+    snapshot_id = sanctions.snapshot_id_for(csv_path)
 
     # Atomic swap: delete the old snapshot and insert the new one inside the same
     # transaction as the rest of the build (session_scope commits once, at the end).

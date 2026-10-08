@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from continuum.foundation.sanctions import parse_targets_simple_csv
+from continuum.foundation.sanctions import parse_targets_simple_csv, snapshot_id_for
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "sanctions_sample.csv"
 
@@ -49,3 +49,15 @@ class TestParseTargetsSimpleCsv:
         listings = parse_targets_simple_csv(csv_path)
         assert listings[0].birth_date is None
         assert listings[0].aliases == []
+
+
+class TestSnapshotId:
+    """CLAUDE.md I6: reloading the same listing must not invalidate existing decisions."""
+
+    def test_same_file_gives_the_same_snapshot_id(self) -> None:
+        assert snapshot_id_for(FIXTURE) == snapshot_id_for(FIXTURE)
+
+    def test_changed_file_gives_a_new_snapshot_id(self, tmp_path: Path) -> None:
+        changed = tmp_path / "changed.csv"
+        changed.write_text(FIXTURE.read_text() + "synth-9999,Person,New Listing,,,,\n")
+        assert snapshot_id_for(changed) != snapshot_id_for(FIXTURE)
