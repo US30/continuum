@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     redis_host: str = "localhost"
     redis_port: int = 6379
 
+    # --- Case checkpointer (CLAUDE.md §7: checkpoint at every node) ---
+    # "redis" needs RedisJSON + RediSearch (redis-stack locally). Memorystore has neither, so
+    # the cloud sets "postgres" (Cloud SQL); the Arq queue stays on Redis in both.
+    checkpoint_backend: Literal["redis", "postgres"] = "redis"
+
     # --- LiteLLM gateway (CLAUDE.md I7: the only door to any model provider) ---
     # Empty base url = LiteLLM calls the provider directly (e.g. the DeepSeek API); set it to
     # point at a self-hosted LiteLLM proxy instead. The model id (continuum.config.models)
@@ -92,6 +97,11 @@ class Settings(BaseSettings):
     # hp-011 (1 day) and hp-013 (day/month swap) are true matches this must accept.
     screening_dob_near_miss_days: int = 31
 
+    # Spend guard for the nightly batch: cap on paid adjudicator calls per run; candidates
+    # over the cap stay undecided (outreach stays blocked) and are picked up the next night.
+    # None = no cap. Not tuned — an operational budget, set per environment.
+    screening_max_adjudications_per_run: int | None = None
+
     # --- Decisioning graph (Phase 5) ---
     # Cost of one outreach (message send + agent/handling overhead), USD. A case is only
     # worth contacting if expected incremental recovery exceeds it. Placeholder: chosen to be
@@ -138,6 +148,15 @@ class Settings(BaseSettings):
     def database_url(self) -> str:
         return (
             f"postgresql+psycopg://{self.postgres_user}:{self.postgres_password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def postgres_dsn(self) -> str:
+        """libpq-style URL for psycopg-native clients (the Postgres checkpointer)."""
+        return (
+            f"postgresql://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 

@@ -16,8 +16,10 @@ from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.checkpoint.redis import RedisSaver
 from langgraph.checkpoint.redis.jsonplus_redis import JsonPlusRedisSerializer
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.types import Command
 
 from continuum.config.settings import Settings, get_settings
@@ -55,13 +57,13 @@ def default_deps(settings: Settings | None = None) -> GraphDeps:
     )
 
 
-def checkpoint_serializer() -> JsonPlusRedisSerializer:
-    """Serializer that revives our own models when a checkpoint is read back.
+def _allowed_modules() -> tuple[set[tuple[str, ...]], set[tuple[str, ...]]]:
+    """Our own state and guard contracts, as (json, msgpack) allowlists.
 
-    LangGraph refuses to reconstruct arbitrary classes from stored JSON (a deliberate
+    LangGraph refuses to reconstruct arbitrary classes from stored checkpoints (a deliberate
     deserialization allowlist), so without this a resumed case would get plain dicts where it
-    stored CaseView/Draft/GuardVerdict and fail validation. Only our state and guard contracts
-    are allowed — an explicit list, not `allow everything`."""
+    stored CaseView/Draft/GuardVerdict and fail validation. An explicit list, not `allow
+    everything`."""
     json_allowed: set[tuple[str, ...]] = set()
     msgpack_allowed: set[tuple[str, ...]] = set()
     for module in (graph_state, guard_models, screening_status):
@@ -70,6 +72,12 @@ def checkpoint_serializer() -> JsonPlusRedisSerializer:
                 # JSON envelopes hold the dotted path split into parts; msgpack uses (module, name).
                 json_allowed.add((*cls.__module__.split("."), cls.__name__))
                 msgpack_allowed.add((cls.__module__, cls.__name__))
+    return json_allowed, msgpack_allowed
+
+
+def checkpoint_serializer() -> JsonPlusRedisSerializer:
+    """Serializer that revives our own models when a checkpoint is read back from Redis."""
+    json_allowed, msgpack_allowed = _allowed_modules()
     return JsonPlusRedisSerializer(
         allowed_json_modules=json_allowed, allowed_msgpack_modules=msgpack_allowed
     )
@@ -82,6 +90,33 @@ def redis_checkpointer(settings: Settings | None = None) -> Iterator[RedisSaver]
         saver.serde = checkpoint_serializer()
         saver.setup()
         yield saver
+
+
+@contextmanager
+def postgres_checkpointer(settings: Settings | None = None) -> Iterator[PostgresSaver]:
+    """Checkpoints in Postgres (the cloud backend, see Settings.checkpoint_backend). `setup()`
+    creates the library's own checkpoint tables if missing and is safe to repeat (I6); they
+    are owned by langgraph-checkpoint-postgres, not by our Alembic migrations."""
+    settings = settings or get_settings()
+    json_allowed, msgpack_allowed = _allowed_modules()
+    with PostgresSaver.from_conn_string(settings.postgres_dsn) as saver:
+        saver.serde = JsonPlusSerializer(
+            allowed_json_modules=json_allowed, allowed_msgpack_modules=msgpack_allowed
+        )
+        saver.setup()
+        yield saver
+
+
+@contextmanager
+def checkpointer(settings: Settings | None = None) -> Iterator[BaseCheckpointSaver[Any]]:
+    """The checkpointer this environment is configured for."""
+    settings = settings or get_settings()
+    if settings.checkpoint_backend == "postgres":
+        with postgres_checkpointer(settings) as pg_saver:
+            yield pg_saver
+    else:
+        with redis_checkpointer(settings) as redis_saver:
+            yield redis_saver
 
 
 def _config(entity_id: uuid.UUID, as_of: date) -> RunnableConfig:

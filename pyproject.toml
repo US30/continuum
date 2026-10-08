@@ -15,6 +15,8 @@ dependencies = [
     "typer>=0.13",
     "numpy>=2.1",
     "polars>=1.14",
+    # Synthetic identity generation is a runtime stage of the nightly batch (I8), not a dev tool.
+    "faker>=33.0",
 ]
 
 [project.optional-dependencies]
@@ -31,6 +33,7 @@ ml = [
 graph = [
     "langgraph>=0.2",
     "langgraph-checkpoint-redis>=0.5",
+    "langgraph-checkpoint-postgres>=2.0",
     "redis>=5.2",
 ]
 llm = [
@@ -39,6 +42,8 @@ llm = [
 api = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.12",
 ]
 workers = [
     "arq>=0.26",
@@ -59,7 +64,7 @@ dev = [
     "pytest>=8.3",
     "pytest-cov>=6.0",
     "pre-commit>=4.0",
-    "faker>=33.0",
+    "httpx>=0.27",
 ]
 
 [build-system]
