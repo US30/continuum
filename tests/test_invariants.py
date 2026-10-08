@@ -170,3 +170,12 @@ class TestIdentityAndNetworkTruthAreEvalOnly:
             )
         ]
         assert not offenders, f"runtime code touches eval-only truth: {offenders}"
+
+
+class TestRuntimeDoesNotImportTheEvalHarness:
+    """CLAUDE.md I4, at package level: eval/ may read ground truth, so runtime code must not
+    depend on it. (eval/ is also not in the deployed image, so such an import would crash.)"""
+
+    def test_no_continuum_module_imports_eval(self) -> None:
+        hits = _importers_of(CONTINUUM_ROOT, ("eval",))
+        assert not hits, f"runtime module imports the eval harness: {hits}"

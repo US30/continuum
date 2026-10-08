@@ -14,8 +14,14 @@ from continuum.db.models.entity import Entity, EntityMember
 from continuum.db.models.party import PartyRecord
 from continuum.db.models.screening import SanctionsAlias, SanctionsEntity
 from continuum.db.session import session_scope
+from continuum.screening.audit import (
+    AUDIT_FLOOR,
+    audit_rescreen,
+    draw_sample,
+    is_suspect,
+    wilson_interval,
+)
 from continuum.screening.candidates import DobEvidence
-from eval.audit import AUDIT_FLOOR, audit_rescreen, draw_sample, is_suspect, wilson_interval
 
 
 class TestWilson:
