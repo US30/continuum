@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Case {{ review.entity_id[:8] }}{% endblock %}
+{% block main %}
+<h1>Entity <code>{{ review.entity_id }}</code></h1>
+
+<section>
+  <h2>Guard verdict <span class="tag {{ review.verdict }}">{{ review.verdict }}</span></h2>
+  <ul>{% for reason in review.reasons %}<li>{{ reason }}</li>{% endfor %}</ul>
+  <p>Total overdue across the case: <strong>{{ "{:,.2f}".format(review.total_overdue) }}</strong>
+     · screening <span class="tag {{ file.screening }}">{{ file.screening }}</span></p>
+</section>
+
+<section>
+  <h2>Drafted message</h2>
+  {% if review.draft %}<pre>{{ review.draft }}</pre>
+  {% else %}<p class="muted">No message was drafted for this case.</p>{% endif %}
+</section>
+
+<section>
+  <h2>Accounts held by this entity ({{ file.accounts|length }})</h2>
+  <table>
+    <thead><tr><th>Account</th><th>Product</th><th>State</th><th class="num">Exposure</th></tr></thead>
+    <tbody>
+      {% for a in file.accounts %}
+      <tr><td><code>{{ a.account_id|string|truncate(8, True, "") }}</code></td><td>{{ a.product }}</td>
+          <td>{{ a.state }}</td><td class="num">{{ "{:,.2f}".format(a.exposure) }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>One-hop network ({{ file.links|length }})</h2>
+  {% if file.links %}
+  <table>
+    <thead><tr><th>Linked entity</th><th>Link</th><th class="num">Strength</th></tr></thead>
+    <tbody>
+      {% for l in file.links %}
+      <tr><td><code>{{ l.entity_id|string|truncate(8, True, "") }}</code></td><td>{{ l.edge_type }}</td>
+          <td class="num">{{ "%.2f"|format(l.strength) }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">No linked entities.</p>{% endif %}
+</section>
+
+<section>
+  <h2>Decision</h2>
+  <form class="decision" method="post" action="/reviews/{{ review.entity_id }}/decision">
+    {% if review.may_approve %}
+    <button class="approve" name="decision" value="approve">Approve and send</button>
+    <button name="decision" value="reject">Reject</button>
+    {% else %}
+    <button name="decision" value="acknowledge">Acknowledge block</button>
+    {% endif %}
+  </form>
+  {% if not review.may_approve %}
+  <p class="muted">This is a hard block. It can be acknowledged, never approved for sending.</p>
+  {% endif %}
+</section>
+{% endblock %}
