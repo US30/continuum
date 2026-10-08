@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars (gitignored) and fill in. No secret belongs in this file.
+project_id        = "my-gcp-project"
+region            = "us-central1"
+github_repository = "owner/continuum"
+reviewers         = ["user:reviewer@example.com"]
+
+# Leave false until the DeepSeek key has been added to Secret Manager (see README.md).
+llm_enabled = false

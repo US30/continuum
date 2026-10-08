@@ -1,9 +1,10 @@
 name: CI
 
+# Runs on every pull request. On a push to the trunk it runs as the first stage of
+# deploy.yml (workflow_call), so a commit is never deployed without passing these gates.
 on:
   pull_request:
-  push:
-    branches: [main, trunk]
+  workflow_call:
 
 jobs:
   lint-type-unit:

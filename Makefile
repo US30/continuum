@@ -1,6 +1,7 @@
 .PHONY: install lint format typecheck test test-all check \
         db-up db-down db-reset migrate revision data-build scan \
-        resolve resolve-metrics screen screen-metrics screen-metrics-llm train uplift-metrics worker cases injection guard-golden network-metrics audit metrics metrics-check metrics-baseline ci-metrics
+        resolve resolve-metrics screen screen-metrics screen-metrics-llm train uplift-metrics worker cases injection guard-golden network-metrics audit metrics metrics-check metrics-baseline ci-metrics \
+        nightly api image tf-validate
 
 COMPOSE = docker compose -f docker/docker-compose.yml
 RUN = conda run --no-capture-output -n continuum
@@ -124,3 +125,24 @@ ci-metrics:
 	LLM_ENABLED=false $(RUN) python -m continuum.screening.run --no-adjudicate
 	$(RUN) python -m continuum.scoring.train
 	$(RUN) python -m eval.metrics --check
+
+# Phase 8: the nightly batch as one Prefect flow (what the Cloud Run job runs), the review
+# console, the deployable image, and an offline check of the Terraform in infra/.
+nightly:
+	$(RUN) python -m continuum.flows.nightly
+
+# Review console on http://localhost:8080 (needs `make db-up`; a worker must be running for
+# decisions to take effect).
+api:
+	$(RUN) python -m continuum.api
+
+image:
+	docker build -f docker/Dockerfile -t continuum:local .
+
+TERRAFORM = docker run --rm -v "$(CURDIR)/infra:/w" -w /w hashicorp/terraform:1.13
+
+# No cloud credentials needed: checks formatting and that the configuration is internally valid.
+tf-validate:
+	$(TERRAFORM) init -backend=false -input=false
+	$(TERRAFORM) fmt -check -recursive
+	$(TERRAFORM) validate

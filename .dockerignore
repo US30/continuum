@@ -1,0 +1,15 @@
+# Keep the build context to what the image needs. data/ holds local datasets (never shipped).
+.git
+.github
+.venv
+data
+infra
+tests
+eval
+docker/postgres
+**/__pycache__
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.env
+.env.*

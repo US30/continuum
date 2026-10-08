@@ -1,0 +1,164 @@
+name: Deploy
+
+# A push to the trunk deploys (CLAUDE.md Phase 8):
+#   CI gates -> build -> push -> terraform plan -> apply -> migrate -> gradual rollout
+#
+# Authentication is keyless: GitHub's OIDC token is exchanged for a short-lived token of the
+# deployer service account (workload identity federation, infra/iam.tf). No key is stored.
+#
+# Repository variables (Settings -> Secrets and variables -> Actions -> Variables); the values
+# of the last two come from `terraform output` after the first, manual apply (infra/README.md):
+#   GCP_PROJECT_ID, GCP_REGION, TF_STATE_BUCKET,
+#   GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_DEPLOYER_SERVICE_ACCOUNT
+# Optional: REVIEWERS (JSON list of IAM members), LLM_ENABLED (true/false).
+
+on:
+  push:
+    branches: [main, trunk]
+
+# One deploy at a time, in order; a newer push waits rather than cancelling a rollout midway.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+  IMAGE: ${{ vars.GCP_REGION || 'us-central1' }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/continuum/continuum:${{ github.sha }}
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build
+        run: docker build -f docker/Dockerfile -t "$IMAGE" .
+
+      - name: Push to Artifact Registry
+        run: |
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          docker push "$IMAGE"
+
+  terraform:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: infra
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+      TF_VAR_region: ${{ vars.GCP_REGION || 'us-central1' }}
+      TF_VAR_github_repository: ${{ github.repository }}
+      TF_VAR_reviewers: ${{ vars.REVIEWERS || '[]' }}
+      TF_VAR_llm_enabled: ${{ vars.LLM_ENABLED || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.13.*"
+
+      - name: Init
+        run: terraform init -input=false -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+
+      - name: Format and validate
+        run: |
+          terraform fmt -check -recursive
+          terraform validate
+
+      # The plan file stays on this runner: it contains generated secrets, so it is not
+      # uploaded as an artifact. Apply runs exactly the plan that was printed.
+      - name: Plan
+        run: terraform plan -input=false -var "image=${IMAGE}" -out=tfplan
+
+      - name: Apply
+        run: terraform apply -input=false tfplan
+
+  rollout:
+    needs: terraform
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      SERVICE: continuum-api
+      # Share of traffic the new revision takes first, and how long it is watched.
+      CANARY_PERCENT: "10"
+      SOAK_SECONDS: "120"
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      # Forward-only migrations (CLAUDE.md §10) run before any new code takes work.
+      - name: Migrate the database
+        run: gcloud run jobs execute continuum-migrate --region "$REGION" --wait
+
+      - name: Update the worker pool
+        run: |
+          gcloud run worker-pools update continuum-worker --region "$REGION" \
+            --container worker --image "$IMAGE"
+
+      # The new revision must pass its /healthz startup probe to become ready; it is created
+      # with no traffic, so a revision that cannot start never serves a request.
+      - name: Deploy the API revision without traffic
+        id: revision
+        run: |
+          previous=$(gcloud run services describe "$SERVICE" --region "$REGION" \
+            --format='value(status.latestReadyRevisionName)')
+          gcloud run deploy "$SERVICE" --region "$REGION" --image "$IMAGE" --no-traffic
+          new=$(gcloud run services describe "$SERVICE" --region "$REGION" \
+            --format='value(status.latestReadyRevisionName)')
+          echo "previous=$previous" >> "$GITHUB_OUTPUT"
+          echo "new=$new" >> "$GITHUB_OUTPUT"
+
+      - name: Shift the canary share
+        run: |
+          gcloud run services update-traffic "$SERVICE" --region "$REGION" \
+            --to-revisions "${{ steps.revision.outputs.new }}=${CANARY_PERCENT}"
+
+      - name: Watch the canary
+        run: |
+          sleep "$SOAK_SECONDS"
+          errors=$(gcloud logging read \
+            "resource.type=\"cloud_run_revision\" AND resource.labels.revision_name=\"${{ steps.revision.outputs.new }}\" AND severity>=ERROR" \
+            --freshness=10m --limit=1 --format='value(insertId)')
+          if [ -n "$errors" ]; then
+            echo "::error::new revision logged errors during the canary; rolling back"
+            exit 1
+          fi
+
+      - name: Shift all traffic
+        run: gcloud run services update-traffic "$SERVICE" --region "$REGION" --to-latest
+
+      - name: Roll back on failure
+        if: failure() && steps.revision.outputs.previous != ''
+        run: |
+          gcloud run services update-traffic "$SERVICE" --region "$REGION" \
+            --to-revisions "${{ steps.revision.outputs.previous }}=100"

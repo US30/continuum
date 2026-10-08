@@ -9,8 +9,11 @@ and to make collections decisions on the entity, not the account.
 
 ## Status
 
-Phase 0 (skeleton) and Phase 1 (data foundation) are scaffolded. Nothing has been executed yet
-in this environment — see "Local setup" below to bring it up.
+Phases 0-7 are built and run locally: data foundation, entity resolution, screening, uplift
+scoring, the decisioning graph, guard and dispatch, and the evaluation harness with its CI
+metric gate. Phase 8 (deploy) is written and checked offline — Terraform validates, the image
+builds and runs the nightly batch, worker and review console locally — but **nothing has been
+deployed to a cloud project yet**. See `infra/README.md`.
 
 ## Local setup
 
