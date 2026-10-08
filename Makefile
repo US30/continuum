@@ -139,7 +139,7 @@ api:
 image:
 	docker build -f docker/Dockerfile -t continuum:local .
 
-TERRAFORM = docker run --rm -v "$(CURDIR)/infra:/w" -w /w hashicorp/terraform:1.13
+TERRAFORM = docker run --rm -v "$(CURDIR)/infra:/w" -w /w hashicorp/terraform:1.16
 
 # No cloud credentials needed: checks formatting and that the configuration is internally valid.
 tf-validate:

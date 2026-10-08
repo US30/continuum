@@ -80,7 +80,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.13.*"
+          terraform_version: "1.16.*"
 
       - name: Init
         run: terraform init -input=false -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
