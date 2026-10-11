@@ -59,6 +59,7 @@ Then set these GitHub repository **variables** (none of them is a secret):
 | `GCP_DEPLOYER_SERVICE_ACCOUNT` | `terraform output -raw deployer_service_account` |
 | `REVIEWERS` (optional) | JSON list, e.g. `["user:pat@example.com"]` |
 | `LLM_ENABLED` (optional) | `true` once the model key exists (below) |
+| `SCHEDULES_PAUSED` (optional) | `true` to deploy without the nightly batch or case queueing starting on schedule |
 
 Push to the trunk. `.github/workflows/deploy.yml` then runs:
 CI gates, build, push, plan, apply, migrate, gradual rollout.

@@ -10,7 +10,8 @@ name: Deploy
 # of the last two come from `terraform output` after the first, manual apply (infra/README.md):
 #   GCP_PROJECT_ID, GCP_REGION, TF_STATE_BUCKET,
 #   GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_DEPLOYER_SERVICE_ACCOUNT
-# Optional: REVIEWERS (JSON list of IAM members), LLM_ENABLED (true/false).
+# Optional: REVIEWERS (JSON list of IAM members), LLM_ENABLED (true/false),
+#   SCHEDULES_PAUSED (true/false).
 
 on:
   push:
@@ -69,6 +70,7 @@ jobs:
       TF_VAR_github_repository: ${{ github.repository }}
       TF_VAR_reviewers: ${{ vars.REVIEWERS || '[]' }}
       TF_VAR_llm_enabled: ${{ vars.LLM_ENABLED || 'false' }}
+      TF_VAR_schedules_paused: ${{ vars.SCHEDULES_PAUSED || 'false' }}
     steps:
       - uses: actions/checkout@v4
 

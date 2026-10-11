@@ -21,6 +21,7 @@ resource "google_cloud_scheduler_job" "run" {
   region           = var.region
   schedule         = each.value.schedule
   time_zone        = var.schedule_time_zone
+  paused           = var.schedules_paused
   attempt_deadline = "180s"
 
   retry_config {

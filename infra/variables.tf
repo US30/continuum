@@ -77,6 +77,15 @@ variable "schedule_time_zone" {
   default     = "Etc/UTC"
 }
 
+variable "schedules_paused" {
+  description = <<-EOT
+    Pause both Cloud Scheduler jobs, so the infrastructure is deployed but neither the nightly
+    batch nor case queueing starts on its own. Set false to let them run on schedule.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "db_tier" {
   description = "Cloud SQL machine tier."
   type        = string

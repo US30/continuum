@@ -6,3 +6,6 @@ reviewers         = ["user:reviewer@example.com"]
 
 # Leave false until the DeepSeek key has been added to Secret Manager (see README.md).
 llm_enabled = false
+
+# Set true to deploy without letting the nightly batch or case queueing start on schedule.
+schedules_paused = false
