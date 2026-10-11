@@ -135,8 +135,15 @@ jobs:
           previous=$(gcloud run services describe "$SERVICE" --region "$REGION" \
             --format='value(status.latestReadyRevisionName)')
           gcloud run deploy "$SERVICE" --region "$REGION" --image "$IMAGE" --no-traffic
+          # latestCreated, not latestReady: `deploy` returns only once the new revision is
+          # ready, but Cloud Run keeps reporting the old revision as latestReady while the
+          # new one has no traffic, which made the canary step target the old revision.
           new=$(gcloud run services describe "$SERVICE" --region "$REGION" \
-            --format='value(status.latestReadyRevisionName)')
+            --format='value(status.latestCreatedRevisionName)')
+          if [ -z "$new" ] || [ "$new" = "$previous" ]; then
+            echo "::error::no new revision was created (latest is '$new', previous '$previous')"
+            exit 1
+          fi
           echo "previous=$previous" >> "$GITHUB_OUTPUT"
           echo "new=$new" >> "$GITHUB_OUTPUT"
 
