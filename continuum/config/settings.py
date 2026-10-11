@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     # fully observed 60-day outcome window (continuum.scoring.features).
     data_as_of_date: date = date(2026, 1, 1)
 
+    # --- Dashboard ---
+    # Where the dashboard looks for the evaluation harness's metrics report (`make metrics`
+    # writes it). Absent file = the page says the metrics are not computed.
+    metrics_report_path: str = "data/metrics_report.json"
+
     # --- Telemetry ---
     otel_exporter_otlp_endpoint: str = ""
     otel_console: bool = False  # print every span to stdout (local demos)

@@ -5,6 +5,8 @@
     GET  /reviews/{entity_id}          one parked case: guard reasons, draft, accounts, network
     POST /reviews/{entity_id}/decision approve | reject | acknowledge
     GET  /api/reviews                  the queue as JSON
+    GET  /dashboard                    counts from the batch and the graph, plus the three metrics
+    GET  /api/dashboard                the same as JSON
 
 This service never runs the graph and never sends anything. A decision is *claimed* (taken off
 the queue, so it can be made only once) and handed to the worker as `resume_case_job`; the
@@ -30,6 +32,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from continuum.api.casefile import CaseFile, load_case_file
+from continuum.api.dashboard import Dashboard, load_dashboard
 from continuum.api.identity import reviewer_identity
 from continuum.config.settings import get_settings
 from continuum.db.session import session_scope
@@ -65,6 +68,11 @@ def _case_file(entity_id: uuid.UUID) -> CaseFile:
         return load_case_file(session, entity_id)
 
 
+def _dashboard() -> Dashboard:
+    with session_scope() as session:
+        return load_dashboard(session, Path(get_settings().metrics_report_path))
+
+
 def _require_same_origin(request: Request) -> None:
     """Refuse cross-site form posts. The reviewer is authenticated by a proxy cookie, so a
     page on another site could otherwise submit a decision in their name."""
@@ -90,6 +98,18 @@ def create_app() -> FastAPI:
     @app.get("/api/reviews")
     async def reviews_json(redis: Redis, reviewer: Reviewer) -> list[dict[str, Any]]:
         return await review_queue.list_pending(redis)
+
+    @app.get("/api/dashboard")
+    async def dashboard_json(reviewer: Reviewer) -> Dashboard:
+        return await run_in_threadpool(_dashboard)
+
+    @app.get("/dashboard", response_class=HTMLResponse)
+    async def dashboard(request: Request, redis: Redis, reviewer: Reviewer) -> HTMLResponse:
+        data = await run_in_threadpool(_dashboard)
+        pending = len(await review_queue.list_pending(redis))
+        return templates.TemplateResponse(
+            request, "dashboard.html", {"d": data, "pending": pending, "reviewer": reviewer}
+        )
 
     @app.get("/reviews", response_class=HTMLResponse)
     async def reviews(request: Request, redis: Redis, reviewer: Reviewer) -> HTMLResponse:

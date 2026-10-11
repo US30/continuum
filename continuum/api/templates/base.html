@@ -15,6 +15,7 @@
     main { max-width:1000px; margin:24px auto; padding:0 24px; }
     h1 { font-size:20px; margin:0 0 16px; }
     h2 { font-size:15px; margin:0 0 8px; }
+    h3 { font-size:13px; margin:0 0 4px; color:var(--muted); }
     section { background:var(--card); border:1px solid var(--line); border-radius:6px;
               padding:16px; margin-bottom:16px; }
     table { width:100%; border-collapse:collapse; }
@@ -33,10 +34,15 @@
     button { font:inherit; padding:8px 16px; border-radius:4px; border:1px solid var(--line);
              background:var(--card); cursor:pointer; }
     button.approve { background:var(--ok); border-color:var(--ok); color:#fff; }
+    nav a { margin-right:16px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:0 16px; }
+    .tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px;
+             margin-bottom:12px; }
+    .tile strong { display:block; font-size:22px; font-variant-numeric:tabular-nums; }
   </style>
 </head>
 <body>
-  <header><a href="/reviews">CONTINUUM · review queue</a><span class="muted">{{ reviewer }}</span></header>
+  <header><nav><a href="/dashboard">CONTINUUM</a><a href="/dashboard">Dashboard</a><a href="/reviews">Review queue</a></nav><span class="muted">{{ reviewer }}</span></header>
   <main>{% block main %}{% endblock %}</main>
 </body>
 </html>
