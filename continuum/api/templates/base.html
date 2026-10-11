@@ -5,44 +5,89 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Review queue{% endblock %} · CONTINUUM</title>
   <style>
-    :root { --ink:#1b1f24; --muted:#5b6570; --line:#d8dde3; --bg:#f6f7f9; --card:#fff;
-            --block:#a4262c; --warn:#8a5a00; --ok:#1e6b3a; }
+    :root { color-scheme: light;
+            --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781; --line:#e1e0d9; --bg:#f9f9f7;
+            --card:#fcfcfb; --wash:#f0efec; --accent:#2a78d6; --accent-soft:#cde2fb;
+            --block:#d03b3b; --warn:#fab219; --ok:#0ca30c; --ok-ink:#006300; }
+    @media (prefers-color-scheme: dark) {
+      :root { color-scheme: dark;
+              --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781; --line:#2c2c2a; --bg:#0d0d0d;
+              --card:#1a1a19; --wash:#262624; --accent:#3987e5; --accent-soft:#184f95;
+              --ok-ink:#0ca30c; }
+    }
     * { box-sizing: border-box; }
-    body { margin:0; font:15px/1.5 system-ui, sans-serif; color:var(--ink); background:var(--bg); }
-    header { display:flex; justify-content:space-between; padding:12px 24px; background:var(--card);
-             border-bottom:1px solid var(--line); }
-    header a { color:inherit; text-decoration:none; font-weight:600; }
-    main { max-width:1000px; margin:24px auto; padding:0 24px; }
-    h1 { font-size:20px; margin:0 0 16px; }
-    h2 { font-size:15px; margin:0 0 8px; }
-    h3 { font-size:13px; margin:0 0 4px; color:var(--muted); }
-    section { background:var(--card); border:1px solid var(--line); border-radius:6px;
-              padding:16px; margin-bottom:16px; }
+    body { margin:0; font:14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+           color:var(--ink); background:var(--bg); }
+    a { color:var(--accent); }
+    header { display:flex; align-items:center; justify-content:space-between; gap:16px;
+             padding:0 24px; height:52px; background:var(--card); border-bottom:1px solid var(--line); }
+    header .brand { font-weight:700; letter-spacing:.08em; color:var(--ink); text-decoration:none;
+                    margin-right:28px; }
+    nav { display:flex; align-items:center; height:100%; }
+    nav a.tab { display:flex; align-items:center; height:100%; padding:0 12px; color:var(--ink-2);
+                text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
+    nav a.tab:hover { color:var(--ink); }
+    nav a.tab.on { color:var(--ink); font-weight:600; border-bottom-color:var(--accent); }
+    main { max-width:1160px; margin:28px auto 48px; padding:0 24px; }
+    h1 { font-size:22px; font-weight:650; margin:0 0 4px; }
+    h2 { font-size:14px; font-weight:650; margin:0 0 12px; }
+    h3 { font-size:12px; font-weight:500; margin:0 0 6px; color:var(--ink-2); }
+    p { margin:0 0 12px; }
+    .lede { color:var(--ink-2); margin:0 0 20px; }
+    section { background:var(--card); border:1px solid var(--line); border-radius:8px;
+              padding:18px 20px; margin-bottom:16px; overflow-x:auto; }
     table { width:100%; border-collapse:collapse; }
-    th, td { text-align:left; padding:8px; border-bottom:1px solid var(--line); }
-    th { font-size:12px; text-transform:uppercase; color:var(--muted); }
-    td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
-    code { font-size:13px; }
+    th, td { text-align:left; padding:8px 10px 8px 0; border-bottom:1px solid var(--line);
+             vertical-align:middle; }
+    tr:last-child td { border-bottom:0; }
+    th { font-size:11px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
+         color:var(--muted); }
+    td.num, th.num { text-align:right; padding:8px 0 8px 16px; white-space:nowrap;
+                     font-variant-numeric:tabular-nums; }
+    td:first-child { white-space:nowrap; }
+    code { font-size:12.5px; }
     .muted { color:var(--muted); }
-    .tag { display:inline-block; padding:1px 8px; border-radius:10px; font-size:12px;
-           border:1px solid currentColor; }
-    .tag.block, .tag.hit { color:var(--block); }
-    .tag.escalate, .tag.unresolved { color:var(--warn); }
-    .tag.clear { color:var(--ok); }
-    pre { white-space:pre-wrap; margin:0; padding:12px; background:var(--bg); border-radius:4px; }
+    .tag { display:inline-flex; align-items:center; gap:6px; padding:1px 9px; border-radius:10px;
+           font-size:12px; color:var(--ink-2); background:var(--wash); white-space:nowrap; }
+    .tag::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--muted); }
+    .tag.block::before, .tag.hit::before { background:var(--block); }
+    .tag.escalate::before, .tag.unresolved::before { background:var(--warn); }
+    .tag.clear::before { background:var(--ok); }
+    pre { white-space:pre-wrap; margin:0; padding:12px; background:var(--wash); border-radius:6px; }
     form.decision { display:flex; gap:8px; }
-    button { font:inherit; padding:8px 16px; border-radius:4px; border:1px solid var(--line);
-             background:var(--card); cursor:pointer; }
-    button.approve { background:var(--ok); border-color:var(--ok); color:#fff; }
-    nav a { margin-right:16px; }
-    .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:0 16px; }
-    .tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px;
-             margin-bottom:12px; }
-    .tile strong { display:block; font-size:22px; font-variant-numeric:tabular-nums; }
+    button { font:inherit; padding:8px 16px; border-radius:6px; border:1px solid var(--line);
+             background:var(--card); color:var(--ink); cursor:pointer; }
+    button.approve { background:var(--ok-ink); border-color:var(--ok-ink); color:#fff; }
+
+    /* Dashboard */
+    .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 460px), 1fr));
+            gap:0 16px; }
+    .tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:12px;
+             margin-bottom:16px; }
+    .tiles.metrics { grid-template-columns:repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+    .tile { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px 16px; }
+    .tile .label { display:block; font-size:12px; color:var(--ink-2); }
+    .tile .value { display:block; font-size:26px; font-weight:650; line-height:1.25; }
+    .tile .note { display:block; font-size:12px; color:var(--muted); }
+    .metric .value { font-size:34px; }
+    details { margin-top:10px; font-size:13px; }
+    summary { cursor:pointer; color:var(--ink-2); }
+    details table { margin-top:6px; }
+    /* One hue, length = magnitude; the number beside each bar is the exact value. */
+    td.bar { width:38%; padding-right:14px; }
+    .bar i { display:block; height:8px; min-width:2px; border-radius:0 4px 4px 0; background:var(--accent); }
+    .summary { display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px; margin-bottom:14px; }
   </style>
 </head>
 <body>
-  <header><nav><a href="/dashboard">CONTINUUM</a><a href="/dashboard">Dashboard</a><a href="/reviews">Review queue</a></nav><span class="muted">{{ reviewer }}</span></header>
+  <header>
+    <nav>
+      <a class="brand" href="/dashboard">CONTINUUM</a>
+      <a class="tab {{ 'on' if request.url.path.startswith('/dashboard') }}" href="/dashboard">Dashboard</a>
+      <a class="tab {{ 'on' if request.url.path.startswith('/reviews') }}" href="/reviews">Review queue</a>
+    </nav>
+    <span class="muted">{{ reviewer }}</span>
+  </header>
   <main>{% block main %}{% endblock %}</main>
 </body>
 </html>

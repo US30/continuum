@@ -35,13 +35,41 @@ from continuum.screening.candidates import current_snapshot_id
 # How many of the top-ranked cases the page lists. A page length, not a model threshold.
 TOP_CASES = 15
 
-# The report's three headline blocks, in CLAUDE.md §9 order, with the title each is shown under.
+# The report's blocks, in CLAUDE.md §9 order, with the title each is shown under.
 METRIC_BLOCKS = (
-    ("metric1_screening", "Metric 1 · screening precision at 100% recall"),
-    ("metric2_uplift", "Metric 2 · incremental recovery vs. the rules baseline"),
-    ("metric3_network", "Metric 3 · entity view vs. account view"),
+    ("metric1_screening", "Screening"),
+    ("metric2_uplift", "Uplift ranking"),
+    ("metric3_network", "Entity view vs. account view"),
     ("supporting", "Supporting checks"),
 )
+
+# The one value each metric block leads with: report key, how it is written, and the caption
+# under it. A block with no entry, or whose report lacks the key, shows its table only. The
+# report has no precision figure for Metric 1 until the adjudicator has been run on the
+# labelled set, so that block leads with the recall the deterministic layer must hold (I5).
+HEADLINES = {
+    "metric1_screening": (
+        "recall_deterministic_layer",
+        "percent",
+        "Metric 1 · recall of the deterministic layer",
+    ),
+    "metric2_uplift": (
+        "vs_rules_top_k",
+        "currency",
+        "Metric 2 · incremental recovery vs. the rules baseline",
+    ),
+    "metric3_network": (
+        "validated_share",
+        "percent",
+        "Metric 3 · cases where the entity view found what the account view missed",
+    ),
+}
+
+
+def _written(value: float, style: str) -> str:
+    if style == "percent":
+        return f"{value:.1%}"
+    return f"${value:,.0f}"
 
 
 class Count(BaseModel):
@@ -80,6 +108,8 @@ class CaseRow(BaseModel):
 class MetricBlock(BaseModel):
     title: str
     values: dict[str, Any]
+    headline: str | None = None
+    caption: str | None = None
 
 
 class Dashboard(BaseModel):
@@ -119,7 +149,13 @@ def load_metrics(path: Path) -> list[MetricBlock] | None:
         block = report.get(key)
         if isinstance(block, dict):
             scalars = {k: v for k, v in block.items() if not isinstance(v, dict | list)}
-            blocks.append(MetricBlock(title=title, values=scalars))
+            headline = caption = None
+            if key in HEADLINES and isinstance(scalars.get(HEADLINES[key][0]), int | float):
+                value_key, style, caption = HEADLINES[key]
+                headline = _written(scalars[value_key], style)
+            blocks.append(
+                MetricBlock(title=title, values=scalars, headline=headline, caption=caption)
+            )
     return blocks
 
 

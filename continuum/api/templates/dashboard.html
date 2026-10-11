@@ -1,17 +1,24 @@
 {% extends "base.html" %}
 {% block title %}Dashboard{% endblock %}
 {% block main %}
-<h1>Dashboard</h1>
+<h1>Risk platform overview</h1>
+<p class="lede">Last resolution {{ d.last_resolution_at.strftime("%d %b %Y, %H:%M UTC") if d.last_resolution_at else "never run" }}
+   · last screening decision {{ d.last_screening_at.strftime("%d %b %Y, %H:%M UTC") if d.last_screening_at else "never" }}</p>
 
+{% if d.metrics is none %}
 <section>
-  <h2>The three metrics</h2>
-  {% if d.metrics is none %}
+  <h2>Evaluation metrics</h2>
   <p class="muted">Not computed. The evaluation harness has not written a metrics report here.</p>
-  {% else %}
-  <div class="grid">
-    {% for block in d.metrics %}
-    <div>
-      <h3>{{ block.title }}</h3>
+</section>
+{% else %}
+<div class="tiles metrics">
+  {% for block in d.metrics if block.headline %}
+  <div class="tile metric">
+    <span class="label">{{ block.title }}</span>
+    <span class="value">{{ block.headline }}</span>
+    <span class="note">{{ block.caption }}</span>
+    <details>
+      <summary>All reported values</summary>
       <table>
         <tbody>
           {% for key, value in block.values.items() %}
@@ -20,33 +27,33 @@
           {% endfor %}
         </tbody>
       </table>
-    </div>
-    {% endfor %}
+    </details>
   </div>
-  {% endif %}
-</section>
+  {% endfor %}
+</div>
+{% endif %}
 
-<section>
-  <h2>What the nightly batch built</h2>
-  <div class="tiles">
-    {% for t in d.totals %}
-    <div class="tile"><strong>{{ "{:,}".format(t.n) }}</strong><span class="muted">{{ t.label }}</span></div>
-    {% endfor %}
-  </div>
-  <p class="muted">Last resolution: {{ d.last_resolution_at or "never" }} · last screening decision:
-     {{ d.last_screening_at or "never" }}</p>
-</section>
+<div class="tiles">
+  {% for t in d.totals %}
+  <div class="tile"><span class="label">{{ t.label }}</span><span class="value">{{ "{:,}".format(t.n) }}</span></div>
+  {% endfor %}
+</div>
 
 <div class="grid">
   <section>
     <h2>Accounts by delinquency state</h2>
+    {% set most = d.account_states|map(attribute="accounts")|max if d.account_states else 0 %}
     <table>
-      <thead><tr><th>State</th><th class="num">Accounts</th><th class="num">Exposure</th></tr></thead>
+      <thead><tr><th>State</th><th></th><th class="num">Accounts</th><th class="num">Exposure</th></tr></thead>
       <tbody>
         {% for s in d.account_states %}
-        <tr><td>{{ s.state }}</td><td class="num">{{ "{:,}".format(s.accounts) }}</td>
-            <td class="num">{{ "{:,.2f}".format(s.exposure) }}</td></tr>
-        {% else %}<tr><td colspan="3" class="muted">No accounts loaded.</td></tr>
+        <tr title="{{ s.state }}: {{ '{:,}'.format(s.accounts) }} accounts, exposure {{ '{:,.2f}'.format(s.exposure) }}">
+          <td>{{ s.state|replace("_", " ") }}</td>
+          <td class="bar"><i style="width:{{ (100 * s.accounts / most)|round(1) if most else 0 }}%"></i></td>
+          <td class="num">{{ "{:,}".format(s.accounts) }}</td>
+          <td class="num">{{ "{:,.0f}".format(s.exposure) }}</td>
+        </tr>
+        {% else %}<tr><td colspan="4" class="muted">No accounts loaded.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -54,12 +61,17 @@
 
   <section>
     <h2>One-hop network links</h2>
+    {% set most = d.edge_types|map(attribute="n")|max if d.edge_types else 0 %}
     <table>
-      <thead><tr><th>Link type</th><th class="num">Links</th></tr></thead>
+      <thead><tr><th>Link type</th><th></th><th class="num">Links</th></tr></thead>
       <tbody>
         {% for e in d.edge_types %}
-        <tr><td>{{ e.label }}</td><td class="num">{{ "{:,}".format(e.n) }}</td></tr>
-        {% else %}<tr><td colspan="2" class="muted">No links materialised.</td></tr>
+        <tr title="{{ e.label }}: {{ '{:,}'.format(e.n) }} links">
+          <td>{{ e.label|replace("_", " ") }}</td>
+          <td class="bar"><i style="width:{{ (100 * e.n / most)|round(1) if most else 0 }}%"></i></td>
+          <td class="num">{{ "{:,}".format(e.n) }}</td>
+        </tr>
+        {% else %}<tr><td colspan="3" class="muted">No links materialised.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -71,7 +83,7 @@
       <thead><tr><th>Method</th><th>Outcome</th><th class="num">Decisions</th></tr></thead>
       <tbody>
         {% for s in d.screening %}
-        <tr><td>{{ s.method }}</td><td><span class="tag {{ s.outcome }}">{{ s.outcome }}</span></td>
+        <tr><td>{{ s.method|replace("_", " ") }}</td><td><span class="tag {{ s.outcome }}">{{ s.outcome }}</span></td>
             <td class="num">{{ "{:,}".format(s.n) }}</td></tr>
         {% else %}<tr><td colspan="3" class="muted">No screening decisions yet.</td></tr>
         {% endfor %}
@@ -85,7 +97,7 @@
       <thead><tr><th>Event type</th><th class="num">Events</th></tr></thead>
       <tbody>
         {% for e in d.risk_file_events %}
-        <tr><td>{{ e.label }}</td><td class="num">{{ "{:,}".format(e.n) }}</td></tr>
+        <tr><td>{{ e.label|replace("_", " ") }}</td><td class="num">{{ "{:,}".format(e.n) }}</td></tr>
         {% else %}<tr><td colspan="2" class="muted">The risk file is empty.</td></tr>
         {% endfor %}
       </tbody>
@@ -95,12 +107,12 @@
 
 <section>
   <h2>Collections cases</h2>
-  <p>
-    {% for c in d.case_dispositions %}<span class="tag">{{ c.label }} {{ "{:,}".format(c.n) }}</span> {% endfor %}
-    <strong>{{ "{:,}".format(d.collapsed_cases) }}</strong> case{{ "" if d.collapsed_cases == 1 else "s" }}
-    cover two or more delinquent accounts held by one entity ·
+  <div class="summary">
+    {% for c in d.case_dispositions %}<span class="tag">{{ c.label }} · {{ "{:,}".format(c.n) }}</span>{% endfor %}
+    <span><strong>{{ "{:,}".format(d.collapsed_cases) }}</strong>
+      case{{ "" if d.collapsed_cases == 1 else "s" }} cover two or more delinquent accounts held by one entity</span>
     <a href="/reviews">{{ pending }} waiting for review</a>
-  </p>
+  </div>
   {% if d.top_cases %}
   <table>
     <thead>
@@ -125,18 +137,36 @@
   {% endif %}
 </section>
 
-<section>
-  <h2>Outreach sent through the guard</h2>
-  <table>
-    <thead><tr><th>Channel</th><th>Guard verdict</th><th class="num">Messages</th></tr></thead>
-    <tbody>
-      {% for c in d.runtime_contacts %}
-      <tr><td>{{ c.channel }}</td><td>{{ c.guard_verdict }}</td><td class="num">{{ "{:,}".format(c.n) }}</td></tr>
-      {% else %}<tr><td colspan="3" class="muted">Nothing has been dispatched.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  <p class="muted">Simulated contact history used to train the response model:
-     {{ "{:,}".format(d.simulated_contacts) }} contacts (never sent).</p>
-</section>
+<div class="grid">
+  <section>
+    <h2>Outreach sent through the guard</h2>
+    <table>
+      <thead><tr><th>Channel</th><th>Guard verdict</th><th class="num">Messages</th></tr></thead>
+      <tbody>
+        {% for c in d.runtime_contacts %}
+        <tr><td>{{ c.channel }}</td><td>{{ c.guard_verdict }}</td><td class="num">{{ "{:,}".format(c.n) }}</td></tr>
+        {% else %}<tr><td colspan="3" class="muted">Nothing has been dispatched.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="muted" style="margin:12px 0 0">Simulated contact history used to train the response model:
+       {{ "{:,}".format(d.simulated_contacts) }} contacts (never sent).</p>
+  </section>
+
+  {% if d.metrics %}
+  {% for block in d.metrics if not block.headline %}
+  <section>
+    <h2>{{ block.title }}</h2>
+    <table>
+      <tbody>
+        {% for key, value in block.values.items() %}
+        <tr><td>{{ key|replace("_", " ") }}</td>
+            <td class="num">{% if value is float %}{{ "{:,.4f}".format(value) }}{% else %}{{ value }}{% endif %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endfor %}
+  {% endif %}
+</div>
 {% endblock %}

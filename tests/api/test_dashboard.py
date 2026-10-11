@@ -68,15 +68,20 @@ def _client(monkeypatch: pytest.MonkeyPatch, data: Dashboard) -> TestClient:
 
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
-    block = MetricBlock(title="Metric 3 · entity view vs. account view", values={"n_cases": 713})
+    block = MetricBlock(
+        title="Entity view vs. account view",
+        values={"n_cases": 713},
+        headline="5.6%",
+        caption="Metric 3 · cases where the entity view found what the account view missed",
+    )
     yield _client(monkeypatch, _dashboard([block]))
 
 
 def test_page_shows_counts_cases_and_metrics(client: TestClient) -> None:
     page = client.get("/dashboard").text
     assert "1,234" in page and "shared_phone" in page
-    assert "<strong>2</strong> cases" in page and str(ENTITY)[:8] in page and "412.50" in page
-    assert "Metric 3" in page and "713" in page
+    assert "<strong>2</strong>" in page and str(ENTITY)[:8] in page and "412.50" in page
+    assert "Metric 3" in page and "5.6%" in page and "713" in page
     assert "0 waiting for review" in page
 
 
@@ -114,7 +119,9 @@ def test_load_metrics_keeps_headline_scalars_only(tmp_path: Path) -> None:
     blocks = load_metrics(report)
     assert blocks is not None
     assert [b.values for b in blocks] == [{"labelled_pairs": 18}, {"validated_share": 0.05}]
-    assert blocks[0].title.startswith("Metric 1")
+    # No headline is invented for a block whose report lacks the headline value.
+    assert [b.headline for b in blocks] == [None, "5.0%"]
+    assert blocks[1].caption is not None and blocks[1].caption.startswith("Metric 3")
 
 
 @pytest.mark.integration
