@@ -5,7 +5,6 @@
 data
 infra
 tests
-eval
 docker/postgres
 **/__pycache__
 .mypy_cache

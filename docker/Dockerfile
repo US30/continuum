@@ -3,6 +3,7 @@
 #   worker   arq continuum.workers.tasks.WorkerSettings
 #   nightly  python -m continuum.flows.nightly
 #   migrate  alembic upgrade head
+#   metrics  python -m eval.metrics                       (the evaluation harness; its own job)
 # Build from the repository root:  docker build -f docker/Dockerfile -t continuum .
 
 FROM python:3.12-slim AS builder
@@ -14,6 +15,9 @@ COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev --all-extras --no-install-project
 
 COPY continuum ./continuum
+# The evaluation harness ships in the image but only the metrics job runs it. Runtime code
+# never imports it (CLAUDE.md I4; tests/test_invariants.py enforces this).
+COPY eval ./eval
 COPY alembic.ini ./alembic.ini
 RUN uv sync --frozen --no-dev --all-extras
 
@@ -28,6 +32,7 @@ RUN useradd --create-home --uid 1000 continuum
 WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/continuum /app/continuum
+COPY --from=builder /app/eval /app/eval
 COPY --from=builder /app/alembic.ini /app/alembic.ini
 
 # /app/data is where the batch writes its dataset files and the model artifact. In the cloud

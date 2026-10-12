@@ -110,6 +110,20 @@ resource "google_cloud_run_v2_service" "api" {
         }
         period_seconds = 30
       }
+
+      # Read-only: the dashboard reads the metrics report the metrics job writes here.
+      volume_mounts {
+        name       = "data"
+        mount_path = "/app/data"
+      }
+    }
+
+    volumes {
+      name = "data"
+      gcs {
+        bucket    = google_storage_bucket.data.name
+        read_only = true
+      }
     }
   }
 
@@ -122,7 +136,7 @@ resource "google_cloud_run_v2_service" "api" {
     ]
   }
 
-  depends_on = [local.run_depends_on]
+  depends_on = [local.run_depends_on, google_storage_bucket_iam_member.runtime_data]
 }
 
 resource "google_project_service_identity" "iap" {
@@ -417,4 +431,78 @@ resource "google_cloud_run_v2_job" "cases" {
   }
 
   depends_on = [local.run_depends_on]
+}
+
+# The evaluation harness (CLAUDE.md §9): computes the three metrics against the cloud database
+# and writes data/metrics_report.json to the bucket, where the dashboard reads it. It is the
+# only workload that runs eval/, so it is the only one that reads ground truth (I4). Not
+# scheduled: run it by hand after a nightly batch.
+resource "google_cloud_run_v2_job" "metrics" {
+  name                = "continuum-metrics"
+  location            = var.region
+  deletion_protection = false
+
+  template {
+    template {
+      service_account = google_service_account.runtime.email
+      max_retries     = 0
+      timeout         = "1800s"
+
+      vpc_access {
+        egress = "PRIVATE_RANGES_ONLY"
+        network_interfaces {
+          network    = google_compute_network.main.id
+          subnetwork = google_compute_subnetwork.run.id
+        }
+      }
+
+      containers {
+        image   = var.image
+        command = ["python", "-m", "eval.metrics"]
+
+        resources {
+          limits = {
+            cpu    = "2"
+            memory = "4Gi"
+          }
+        }
+
+        dynamic "env" {
+          for_each = local.env
+          content {
+            name  = env.key
+            value = env.value
+          }
+        }
+
+        dynamic "env" {
+          for_each = local.secret_env
+          content {
+            name = env.key
+            value_source {
+              secret_key_ref {
+                secret  = env.value
+                version = "latest"
+              }
+            }
+          }
+        }
+
+        volume_mounts {
+          name       = "data"
+          mount_path = "/app/data"
+        }
+      }
+
+      volumes {
+        name = "data"
+        gcs {
+          bucket    = google_storage_bucket.data.name
+          read_only = false
+        }
+      }
+    }
+  }
+
+  depends_on = [local.run_depends_on, google_storage_bucket_iam_member.runtime_data]
 }
