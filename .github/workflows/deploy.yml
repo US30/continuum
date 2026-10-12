@@ -11,7 +11,7 @@ name: Deploy
 #   GCP_PROJECT_ID, GCP_REGION, TF_STATE_BUCKET,
 #   GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_DEPLOYER_SERVICE_ACCOUNT
 # Optional: REVIEWERS (JSON list of IAM members), LLM_ENABLED (true/false),
-#   SCHEDULES_PAUSED (true/false).
+#   SCHEDULES_PAUSED (true/false), MAX_ADJUDICATIONS_PER_NIGHT (spend guard, default 500).
 
 on:
   push:
@@ -71,6 +71,7 @@ jobs:
       TF_VAR_reviewers: ${{ vars.REVIEWERS || '[]' }}
       TF_VAR_llm_enabled: ${{ vars.LLM_ENABLED || 'false' }}
       TF_VAR_schedules_paused: ${{ vars.SCHEDULES_PAUSED || 'false' }}
+      TF_VAR_max_adjudications_per_night: ${{ vars.MAX_ADJUDICATIONS_PER_NIGHT || '500' }}
     steps:
       - uses: actions/checkout@v4
 
