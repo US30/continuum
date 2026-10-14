@@ -18,8 +18,10 @@ Terraform for the whole cloud deployment: one GCP project, one region.
 
 ## Status
 
-`terraform validate` passes (`make tf-validate`). **This configuration has not been applied
-to a real project.** Expect to adjust details the first time it meets the real APIs.
+`terraform validate` passes (`make tf-validate`). This configuration has been applied to a
+real GCP project for the demo, and deploys run from `.github/workflows/deploy.yml`. The
+Cloud Scheduler jobs are deployed paused (`SCHEDULES_PAUSED`), so the nightly batch is
+started by hand.
 
 ## Deviations from CLAUDE.md, agreed before writing
 
