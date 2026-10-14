@@ -16,6 +16,10 @@ name: Deploy
 on:
   push:
     branches: [main, trunk]
+    # A push that changes only documentation does not deploy. Any other file in the same
+    # push (code, infra, this workflow) still triggers the full pipeline.
+    paths-ignore:
+      - "**.md"
 
 # One deploy at a time, in order; a newer push waits rather than cancelling a rollout midway.
 concurrency:
